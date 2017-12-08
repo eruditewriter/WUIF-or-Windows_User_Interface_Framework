@@ -1,16 +1,11 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
-VisualStudioVersion = 15.0.26730.15
+VisualStudioVersion = 15.0.27102.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "WUIF", "WUIF\WUIF.vcxproj", "{953CFB4B-A777-4535-90C9-EEAD98E37631}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Sample Application", "WUIF\Sample Application\Sample Application.vcxproj", "{4403910D-167B-47F4-8053-07B414A7E9FD}"
-EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{45E91DF6-D77D-4024-BBC3-9B6DE1FF0C44}"
-	ProjectSection(SolutionItems) = preProject
-		WUIF\LICENSE.txt = WUIF\LICENSE.txt
-	EndProjectSection
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Sample", "WUIF\Sample\Sample.vcxproj", "{4403910D-167B-47F4-8053-07B414A7E9FD}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
