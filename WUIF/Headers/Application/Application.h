@@ -12,37 +12,50 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.*/
 #pragma once
-#include <shellscalingapi.h>
-#include <mutex>
+#include <forward_list>
+#include <stdint.h> //needed for uint_fast8_t
+#include <d3dcommon.h> //needed for D3D_FEATURE_LEVEL
+#include "..\Bitfield.h"
 
 namespace WUIF {
 
-	class Window;
-	class DXResources;
+    namespace FLAGS {
+        BIT_FIELD(uint_fast8_t, GFX_Flags);
+        BIT_MASK(GFX_Flags, WARP,  1);
+        BIT_MASK(GFX_Flags, D2D,   2);
+        BIT_MASK(GFX_Flags, D3D11, 3);
+        BIT_MASK(GFX_Flags, D3D12, 4);
+    }
 
-	class Application
-	{
-	public:
-		Application(const HINSTANCE &inst, const LPWSTR &cmdline, const int &cmdshow, const WUIF::OSVersion &winver);
-		~Application();
+    enum class OSVersion {
+        UNKNOWN = 0,
+        WIN7,
+        WIN8,
+        WIN8_1,
+        WIN10,
+        WIN10_1511, //WIN10_1511 - November Update
+        WIN10_1607, //WIN10_1607 - Anniversary Update
+        WIN10_1703, //WIN10_1703 - Creators Update
+        WIN10_1709, //WIN10_1709 - Fall Creators Update
+        WIN10_1803  //WIN10_1803 - ???
+    };
 
-		void(*ExceptionHandler)();
+    class Window;
 
-		const HINSTANCE             * const hInstance;
-		const LPWSTR                * const lpCmdLine;
-		const int                   * const nCmdShow;
-		const OSVersion             * const winversion;  //which version of Windows OS app is running on
+    namespace App {
+        extern const int               nCmdShow;
+        extern const LPTSTR            lpCmdLine;
+        extern const HINSTANCE         hInstance;
+        extern const OSVersion         winversion; //which version of Windows OS app is running on
+        extern const FLAGS::GFX_Flags  GFXflags;   //flags defined in code stating which configuration to run - declared in WUIF_Main.h
+        extern const D3D_FEATURE_LEVEL minD3DFL;   //minimum D3DFL for the application - declared in WUIF.h
 
-		static const WUIF::FLAGS::WUIF_Flags flags;
+        extern       Window            *mainWindow;
+        extern       std::forward_list<Window*> Windows;
 
-		Window *mainWindow;
-		Window *Windows;
+        extern       HINSTANCE         libD3D12;
 
-		//std::mutex paintmutex;
-
-		//functions
-	};
-
-
-
+        //functions
+        extern void(*ExceptionHandler)(void);
+    };
 }
