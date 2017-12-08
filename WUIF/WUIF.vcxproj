@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -21,29 +21,56 @@
   <ItemGroup>
     <ClInclude Include="Headers\Application\Application.h" />
     <ClInclude Include="Headers\Bitfield.h" />
-    <ClInclude Include="Headers\DirectX\DirectX.h" />
+    <ClInclude Include="Headers\GFX\D2D\D2D.h" />
+    <ClInclude Include="Headers\GFX\D3D\D3D11.h" />
+    <ClInclude Include="Headers\GFX\D3D\D3D12.h" />
+    <ClInclude Include="Headers\GFX\DXGI\DXGI.h" />
+    <ClInclude Include="Headers\GFX\GFX.h" />
+    <ClInclude Include="Headers\stdafx.h" />
     <ClInclude Include="Headers\Window\Window.h" />
+    <ClInclude Include="Headers\Window\WindowProperties.h" />
+    <ClInclude Include="Headers\Window\Window_Core.h" />
     <ClInclude Include="Headers\Window\WndProcThunk.h" />
-    <ClInclude Include="Headers\WUIF.h" />
     <ClInclude Include="Headers\WUIF_Error.h" />
+    <ClInclude Include="Headers\WUIF_Main.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Source\Application\Application.cpp" />
     <ClCompile Include="Source\DirectX\Direct2D.cpp" />
-    <ClCompile Include="Source\DirectX\DirectX.cpp" />
     <ClCompile Include="Source\DirectX\Direct3D11.cpp" />
     <ClCompile Include="Source\DirectX\Direct3D12.cpp" />
     <ClCompile Include="Source\DirectX\DXGI.cpp" />
+    <ClCompile Include="Source\GFX\GFX.cpp" />
     <ClCompile Include="Source\Window\Window.cpp" />
     <ClCompile Include="Source\Window\WindowProperties.cpp" />
     <ClCompile Include="Source\Window\WndProc.cpp" />
-    <ClCompile Include="Source\WUIF.cpp" />
+    <ClCompile Include="Source\WUIF_Main.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <MASM Include="Source\Assembly\changeconst.asm">
+      <FileType>Document</FileType>
+      <MakeAllSymbolsPublic Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</MakeAllSymbolsPublic>
+      <UseSafeExceptionHandlers Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</UseSafeExceptionHandlers>
+      <UseSafeExceptionHandlers Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</UseSafeExceptionHandlers>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <UseSafeExceptionHandlers Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</UseSafeExceptionHandlers>
+      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">DEBUG</PreprocessorDefinitions>
+    </MASM>
+    <MASM Include="Source\Assembly\changeconstx64.asm">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <UseSafeExceptionHandlers Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</UseSafeExceptionHandlers>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <UseSafeExceptionHandlers Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</UseSafeExceptionHandlers>
+      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">DEBUG</PreprocessorDefinitions>
+    </MASM>
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>
     <ProjectGuid>{953CFB4B-A777-4535-90C9-EEAD98E37631}</ProjectGuid>
     <RootNamespace>WUIF</RootNamespace>
-    <WindowsTargetPlatformVersion>10.0.15063.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0.16299.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -74,6 +101,7 @@
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.props" />
   </ImportGroup>
   <ImportGroup Label="Shared">
   </ImportGroup>
@@ -92,51 +120,86 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <RunCodeAnalysis>true</RunCodeAnalysis>
+    <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(Platform)\$(Configuration)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <RunCodeAnalysis>true</RunCodeAnalysis>
+    <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(Platform)\$(Configuration)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <RunCodeAnalysis>true</RunCodeAnalysis>
+    <EnableCppCoreCheck>false</EnableCppCoreCheck>
+    <CodeAnalysisRuleSet>..\..\..\..\..\..\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\Team Tools\Static Analysis Tools\Rule Sets\NativeRecommendedRules.ruleset</CodeAnalysisRuleSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <RunCodeAnalysis>true</RunCodeAnalysis>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
-      <WarningLevel>Level3</WarningLevel>
+      <WarningLevel>Level4</WarningLevel>
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
       <AdditionalIncludeDirectories>.\Headers;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <EnablePREfast>true</EnablePREfast>
       <AssemblerOutput>All</AssemblerOutput>
+      <MultiProcessorCompilation>false</MultiProcessorCompilation>
+      <MinimalRebuild>true</MinimalRebuild>
+      <PrecompiledHeader>Create</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
     </ClCompile>
     <Lib>
       <SubSystem>Windows</SubSystem>
     </Lib>
+    <PostBuildEvent>
+      <Command>Taskkill /IM MSPDBSRV.exe /f</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <WarningLevel>Level3</WarningLevel>
+      <WarningLevel>Level4</WarningLevel>
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
       <AdditionalIncludeDirectories>.\Headers;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <EnablePREfast>true</EnablePREfast>
       <AssemblerOutput>All</AssemblerOutput>
+      <MultiProcessorCompilation>false</MultiProcessorCompilation>
+      <PreprocessToFile>false</PreprocessToFile>
+      <AdditionalOptions>/wd26490 %(AdditionalOptions)</AdditionalOptions>
+      <ExceptionHandling>SyncCThrow</ExceptionHandling>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <MinimalRebuild>true</MinimalRebuild>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <PreprocessKeepComments>false</PreprocessKeepComments>
+      <IntrinsicFunctions>false</IntrinsicFunctions>
+      <BasicRuntimeChecks>Default</BasicRuntimeChecks>
     </ClCompile>
     <Lib>
       <SubSystem>Windows</SubSystem>
     </Lib>
+    <PostBuildEvent>
+      <Command>
+      </Command>
+    </PostBuildEvent>
+    <MASM>
+      <UseSafeExceptionHandlers>true</UseSafeExceptionHandlers>
+    </MASM>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
-      <Optimization>MaxSpeed</Optimization>
+      <Optimization>Full</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
       <AdditionalIncludeDirectories>.\Headers;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <EnablePREfast>true</EnablePREfast>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <PrecompiledHeader>Create</PrecompiledHeader>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <AssemblerOutput>AssemblyAndSourceCode</AssemblerOutput>
     </ClCompile>
     <Link>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
@@ -145,6 +208,10 @@
     <Lib>
       <SubSystem>Windows</SubSystem>
     </Lib>
+    <PostBuildEvent>
+      <Command>
+      </Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -155,6 +222,12 @@
       <SDLCheck>true</SDLCheck>
       <AdditionalIncludeDirectories>.\Headers;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <EnablePREfast>true</EnablePREfast>
+      <MultiProcessorCompilation>false</MultiProcessorCompilation>
+      <PrecompiledHeader>Create</PrecompiledHeader>
+      <AdditionalOptions>/Zo %(AdditionalOptions)</AdditionalOptions>
+      <AssemblerOutput>AssemblyAndSourceCode</AssemblerOutput>
+      <OptimizeForWindowsApplication>true</OptimizeForWindowsApplication>
+      <UseIntelOptimizedHeaders>false</UseIntelOptimizedHeaders>
     </ClCompile>
     <Link>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
@@ -163,8 +236,13 @@
     <Lib>
       <SubSystem>Windows</SubSystem>
     </Lib>
+    <PostBuildEvent>
+      <Command>
+      </Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.targets" />
   </ImportGroup>
 </Project>

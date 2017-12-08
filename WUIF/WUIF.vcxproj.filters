@@ -31,13 +31,28 @@
     <Filter Include="Source Files\Window">
       <UniqueIdentifier>{4b5224af-9f68-4a04-a4df-0579ee59fc26}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\GFX">
+      <UniqueIdentifier>{7540aa76-652b-4651-8d1d-6bd026642b15}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\GFX">
+      <UniqueIdentifier>{fbd47143-2639-4533-8818-7e3f1c778515}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\GFX\D2D">
+      <UniqueIdentifier>{0a8232a4-f2f4-49ae-82f8-9ea12b981856}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\GFX\D3D">
+      <UniqueIdentifier>{cd8ebd26-f21f-47ba-894f-b975f6ebb51f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\GFX\DXGI">
+      <UniqueIdentifier>{f3e24399-9c17-4a52-9940-a14956765649}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Assembly">
+      <UniqueIdentifier>{f83440e0-edd2-435e-8ff9-4662be79a233}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Headers\Application\Application.h">
       <Filter>Header Files\Application</Filter>
-    </ClInclude>
-    <ClInclude Include="Headers\DirectX\DirectX.h">
-      <Filter>Header Files\DirectX</Filter>
     </ClInclude>
     <ClInclude Include="Headers\Window\WndProcThunk.h">
       <Filter>Header Files\Window</Filter>
@@ -48,24 +63,42 @@
     <ClInclude Include="Headers\WUIF_Error.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Headers\WUIF.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="Headers\Bitfield.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Headers\WUIF_Main.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Headers\stdafx.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Headers\Window\WindowProperties.h">
+      <Filter>Header Files\Window</Filter>
+    </ClInclude>
+    <ClInclude Include="Headers\GFX\GFX.h">
+      <Filter>Header Files\GFX</Filter>
+    </ClInclude>
+    <ClInclude Include="Headers\GFX\DXGI\DXGI.h">
+      <Filter>Header Files\GFX\DXGI</Filter>
+    </ClInclude>
+    <ClInclude Include="Headers\GFX\D3D\D3D11.h">
+      <Filter>Header Files\GFX\D3D</Filter>
+    </ClInclude>
+    <ClInclude Include="Headers\GFX\D3D\D3D12.h">
+      <Filter>Header Files\GFX\D3D</Filter>
+    </ClInclude>
+    <ClInclude Include="Headers\GFX\D2D\D2D.h">
+      <Filter>Header Files\GFX\D2D</Filter>
+    </ClInclude>
+    <ClInclude Include="Headers\Window\Window_Core.h">
+      <Filter>Header Files\Window</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Source\WUIF.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="Source\Application\Application.cpp">
       <Filter>Source Files\Application</Filter>
     </ClCompile>
     <ClCompile Include="Source\DirectX\DXGI.cpp">
-      <Filter>Source Files\DirectX</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\DirectX\DirectX.cpp">
       <Filter>Source Files\DirectX</Filter>
     </ClCompile>
     <ClCompile Include="Source\DirectX\Direct2D.cpp">
@@ -86,5 +119,19 @@
     <ClCompile Include="Source\DirectX\Direct3D12.cpp">
       <Filter>Source Files\DirectX</Filter>
     </ClCompile>
+    <ClCompile Include="Source\GFX\GFX.cpp">
+      <Filter>Source Files\GFX</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\WUIF_Main.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <MASM Include="Source\Assembly\changeconstx64.asm">
+      <Filter>Source Files\Assembly</Filter>
+    </MASM>
+    <MASM Include="Source\Assembly\changeconst.asm">
+      <Filter>Source Files\Assembly</Filter>
+    </MASM>
   </ItemGroup>
 </Project>
