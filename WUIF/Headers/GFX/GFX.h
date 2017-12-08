@@ -1,0 +1,53 @@
+/*Copyright 2017 Jonathan Campbell
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.*/
+#pragma once
+//#define REFDRIVER          //uncomment to create a D3D reference driver
+
+namespace WUIF {
+
+    class Window;
+    class DXGIResources;
+    class D3D12Resources;
+    class D3D11Resources;
+    class D2DResources;
+
+    //interface to notify D3D resources on device loss
+    struct IDeviceNotify
+    {
+        virtual void OnDeviceLost() = 0;
+        virtual void OnDeviceRestored() = 0;
+    };
+
+    class GFXResources
+    {
+    public:
+         GFXResources(Window&);
+        ~GFXResources();
+
+        DXGIResources  *DXGI;
+        D3D12Resources *D3D12;
+        D3D11Resources *D3D11;
+        D2DResources   *D2D;
+
+        //a mechanism for allowing user code to handle DirectX device loss
+        IDeviceNotify  *deviceNotify;
+
+        //functions
+        void HandleDeviceLost();
+
+        Window &window;
+    private:
+        
+    };
+}
