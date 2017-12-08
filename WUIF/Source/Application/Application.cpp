@@ -11,54 +11,20 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.*/
-#include "WUIF.h"
-#include <VersionHelpers.h>  //needed for IsWindows8OrGreater definition
-#include <wrl/client.h> //needed for ComPtr
-#include "DirectX\DirectX.h"
+#include "stdafx.h"
+#include "WUIF_Main.h"
 #include "Application\Application.h"
-#include "Window\Window.h"
-
 
 
 using namespace WUIF;
 
-Application::Application(const HINSTANCE &inst, const LPWSTR &cmdline, const int &cmdshow, const OSVersion &winver) :
-	ExceptionHandler(nullptr),
-	hInstance(&inst),
-	lpCmdLine(&cmdline),
-	nCmdShow(&cmdshow),
-	winversion(&winver),
-	mainWindow(nullptr),
-	Windows(nullptr)
-{
-	mainWindow = new Window(this);
-	Windows = mainWindow;
-	//set the cmdshow variable to the nCmdShow passed into the application
-	mainWindow->props.cmdshow(*nCmdShow);
-}
+//const int        App::nCmdShow        = NULL;
+//const LPTSTR     App::lpCmdLine       = nullptr;
+//const HINSTANCE  App::hInstance       = NULL;
+//const OSVersion  App::winversion      = OSVersion::WIN7;
+//const FLAGS::GFX_Flags  App::GFXflags = FLAGS::D3D11;
 
-
-Application::~Application()
-{
-	if (Windows != nullptr) //Windows is "nullptr" if all windows have been closed
-	{
-		Window *nextwin = nullptr;
-		while (Windows != nullptr)
-		{
-			nextwin = Windows->Next;
-			try {
-				if (Windows = mainWindow)
-				{
-					mainWindow = nullptr;
-				}
-				delete Windows; //if there's a problem with the delete catch the exception and just continue. obviously a memory leak, but if we are in the destructor application is shutting down anyway
-				Windows = nullptr;
-			}
-			catch (...) {
-				ASSERT(false);
-			}
-			Windows = nextwin;
-			nextwin = nullptr;
-		}
-	}
-}
+Window    *App::mainWindow              = nullptr;
+HINSTANCE  App::libD3D12                = NULL;
+void     (*App::ExceptionHandler)(void) = nullptr;
+std::forward_list<Window*> App::Windows;
