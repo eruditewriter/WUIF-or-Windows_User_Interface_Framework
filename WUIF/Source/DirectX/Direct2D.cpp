@@ -11,8 +11,12 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.*/
-#include "WUIF.h"
-#include "DirectX\DirectX.h"
+#include "stdafx.h"
+#include "WUIF_Main.h"
+#include "WUIF_Error.h"
+#include "GFX\GFX.h"
+#include "GFX\D2D\D2D.h"
+#include "GFX\DXGI\DXGI.h"
 #include "Application\Application.h"
 #include "Window\Window.h"
 
@@ -20,14 +24,14 @@ using namespace WUIF;
 using namespace Microsoft::WRL;
 
 ComPtr<ID2D1Factory1>       D2DResources::d2dFactory = nullptr;
-ComPtr<ID2D1Device>         D2DResources::d2dDevice = nullptr;
-ComPtr<IDWriteFactory1>     D2DResources::dwFactory = nullptr;
+ComPtr<ID2D1Device>         D2DResources::d2dDevice  = nullptr;
+ComPtr<IDWriteFactory1>     D2DResources::dwFactory  = nullptr;
 ComPtr<IWICImagingFactory2> D2DResources::wicFactory = nullptr;
 
-D2DResources::D2DResources(DXResources *dxres) :
+D2DResources::D2DResources(Window &win) :
 	d2dRenderTarget(nullptr),
 	d2dDeviceContext(nullptr),
-	DXres(dxres)
+	window(win)
 {
 
 }
@@ -58,8 +62,6 @@ void D2DResources::CreateStaticResources()
 		__uuidof(IDWriteFactory1),			                      //reference to the IID of dwFactory
 		&dwFactory));					                          //returns the factory
 
-																  //Initialize the Windows Imaging Component (WIC) Factory.
-	ThrowIfFailed(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED));
 	ThrowIfFailed(CoCreateInstance(
 		CLSID_WICImagingFactory2,	 //CLSID associated with the data and code that will be used to create the object
 		nullptr,					 //If NULL, indicates that the object is not being created as part of an aggregate
@@ -71,19 +73,19 @@ void D2DResources::CreateStaticResources()
 
 void D2DResources::CreateDeviceResources()
 {
-	FLOAT dpi = static_cast<FLOAT>(DXres->winparent->getWindowDPI());
+	FLOAT dpi = static_cast<FLOAT>(window.getWindowDPI());
 	// Create a Direct2D surface (bitmap) linked to the Direct3D texture back buffer via the DXGI back buffer
 	D2D1_BITMAP_PROPERTIES1 bitmapProperties =
 		D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
-			D2D1::PixelFormat(DXres->DXGIres.dxgiSwapChainDesc1.Format, D2D1_ALPHA_MODE_IGNORE), dpi, dpi, NULL);
+			D2D1::PixelFormat(window.GFX->DXGI->dxgiSwapChainDesc1.Format, D2D1_ALPHA_MODE_IGNORE), dpi, dpi, NULL);
 
 	ThrowIfFailed(d2dDevice->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, &d2dDeviceContext));
 
-	d2dDeviceContext->CreateBitmapFromDxgiSurface(DXres->DXGIres.dxgiBackBuffer.Get(), &bitmapProperties,
+	d2dDeviceContext->CreateBitmapFromDxgiSurface(window.GFX->DXGI->dxgiBackBuffer.Get(), &bitmapProperties,
 		&d2dRenderTarget);
 
 	// Set surface as render target in Direct2D device context
-	d2dDeviceContext->SetTarget(DXres->d2dres.d2dRenderTarget.Get());
+	d2dDeviceContext->SetTarget(d2dRenderTarget.Get());
 	//set the D2D target to the system DPI
 	d2dDeviceContext->SetDpi(dpi, dpi);
 }
