@@ -11,344 +11,189 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.*/
+//this was inspired from http://www.artima.com/cppsource/safelabels.html
 #pragma once
-//see http://www.artima.com/cppsource/safelabels.html for the details on this solution
-
-template <unsigned int unique_index, typename word_t>
-class safe_bit_const;
-
-template <unsigned int unique_index, typename word_t>
-class safe_bit_field
-{
-
-public:
-
-	// Corresponding constant bit field type.
-	typedef safe_bit_const<unique_index, word_t> const_t;
-	friend class safe_bit_const<unique_index, word_t>;
-
-	// Default constructor, allows to construct bit fields on the stack.
-	safe_bit_field() : word(0) {}
-
-	// Copy constructor and assignment operators.
-	safe_bit_field(const safe_bit_field& rhs) : word(rhs.word) {}
-	safe_bit_field operator=(safe_bit_field rhs) { word = rhs.word; return *this; }
-
-	// Copy constructor and assignment operators from constant bit fields.
-	safe_bit_field(const const_t& rhs) : word(rhs.word) {}
-	safe_bit_field operator=(const_t rhs) { word = rhs.word; return *this; }
-
-	// Comparison operators.
-	bool operator==(safe_bit_field rhs) const { return word == rhs.word; }
-	bool operator!=(safe_bit_field rhs) const { return word != rhs.word; }
-	bool operator< (safe_bit_field rhs) const { return word < rhs.word; }
-	bool operator> (safe_bit_field rhs) const { return word > rhs.word; }
-	bool operator<=(safe_bit_field rhs) const { return word <= rhs.word; }
-	bool operator>=(safe_bit_field rhs) const { return word >= rhs.word; }
-	//
-	bool operator==(const_t rhs) const { return word == rhs.word; }
-	bool operator!=(const_t rhs) const { return word != rhs.word; }
-	bool operator< (const_t rhs) const { return word < rhs.word; }
-	bool operator> (const_t rhs) const { return word > rhs.word; }
-	bool operator<=(const_t rhs) const { return word <= rhs.word; }
-	bool operator>=(const_t rhs) const { return word >= rhs.word; }
-
-	// Bitwise operations.
-	safe_bit_field operator|(safe_bit_field rhs) const { return safe_bit_field(word | rhs.word); }
-	safe_bit_field operator&(safe_bit_field rhs) const { return safe_bit_field(word & rhs.word); }
-	safe_bit_field operator^(safe_bit_field rhs) const { return safe_bit_field(word ^ rhs.word); }
-	safe_bit_field operator~() const { return safe_bit_field(~word); }
-	safe_bit_field operator|=(safe_bit_field rhs) { word |= rhs.word; return safe_bit_field(*this); }
-	safe_bit_field operator&=(safe_bit_field rhs) { word &= rhs.word; return safe_bit_field(*this); }
-	safe_bit_field operator^=(safe_bit_field rhs) { word ^= rhs.word; return safe_bit_field(*this); }
-	//
-	safe_bit_field operator|(const_t rhs) const { return safe_bit_field(word | rhs.word); }
-	safe_bit_field operator&(const_t rhs) const { return safe_bit_field(word & rhs.word); }
-	safe_bit_field operator^(const_t rhs) const { return safe_bit_field(word ^ rhs.word); }
-	safe_bit_field operator|=(const_t rhs) { word |= rhs.word; return safe_bit_field(*this); }
-	safe_bit_field operator&=(const_t rhs) { word &= rhs.word; return safe_bit_field(*this); }
-	safe_bit_field operator^=(const_t rhs) { word ^= rhs.word; return safe_bit_field(*this); }
-
-	// Conversion to bool.
-	operator const bool() const { return word; }
-
-	// Shift operators shift bits inside the bit field.
-	safe_bit_field operator<< (unsigned int s) { return safe_bit_field(word << s); }
-	safe_bit_field operator>> (unsigned int s) { return safe_bit_field(word >> s); }
-	safe_bit_field operator<<=(unsigned int s) { word <<= s; return *this; }
-	safe_bit_field operator>>=(unsigned int s) { word >>= s; return *this; }
-
-	// Word size is also the maximum number of different bit fields for a given word type.
-	static size_t size() { return sizeof(word_t); }
-
-	// Type of the bit field is available if needed.
-	typedef word_t bit_word_t;
-
-private:
-
-	// Bits - the real data.
-	word_t word;
-
-	// Private constructor from an integer type. Don't put too much stock into
-	// explicit declaration, it's better than nothing but
-	// does not solve all problems with undesired conversions because of
-	// direct initialization.
-	explicit safe_bit_field(word_t init) : word(init) {}
-
-	// Here comes the interesting stuff: all the operators designed to trap
-	// unintended conversions and make them not compile.
-	template <typename T> safe_bit_field operator|(T) const
-	{
-		Forbidden_conversion<T> forbidden_conversion; return *this;
-	}
-	template <typename T> safe_bit_field operator&(T) const
-	{
-		Forbidden_conversion<T> forbidden_conversion; return *this;
-	}
-	template <typename T> safe_bit_field operator^(T) const
-	{
-		Forbidden_conversion<T> forbidden_conversion; return *this;
-	}
-	template <typename T> safe_bit_field operator|=(T) const
-	{
-		Forbidden_conversion<T> forbidden_conversion; return *this;
-	}
-	template <typename T> safe_bit_field operator&=(T) const
-	{
-		Forbidden_conversion<T> forbidden_conversion; return *this;
-	}
-	template <typename T> safe_bit_field operator^=(T) const
-	{
-		Forbidden_conversion<T> forbidden_conversion; return *this;
-	}
-	//
-
-	template <typename T> bool operator==(const T) const {
-		Forbidden_conversion<T>
-			forbidden_conversion; return true;
-	}
-	template <typename T> bool operator!=(const T) const {
-		Forbidden_conversion<T> forbidden_conversion; return true;
-	}
-	template <typename T> bool operator<(const T) const {
-		Forbidden_conversion<T>
-			forbidden_conversion; return true;
-	}
-	template <typename T> bool operator>(const T) const {
-		Forbidden_conversion<T> forbidden_conversion; return true;
-	}
-	template <typename T> bool operator<=(const T) const {
-		Forbidden_conversion<T> forbidden_conversion; return true;
-	}
-	template <typename T> bool operator>=(const T) const {
-		Forbidden_conversion<T> forbidden_conversion; return true;
-	}
-};
-
-// Non-member template operators to catch errors where safe label is not the first argument.
-template <unsigned int unique_index, typename word_t>
-inline safe_bit_field<unique_index, word_t> operator&(bool, safe_bit_field<unique_index, word_t> rhs)
-{
-	Forbidden_conversion<word_t> forbidden_conversion; return rhs;
-}
-template <unsigned int unique_index, typename word_t>
-inline safe_bit_field<unique_index, word_t> operator|(bool, safe_bit_field<unique_index, word_t> rhs)
-{
-	Forbidden_conversion<word_t> forbidden_conversion; return rhs;
-}
-template <unsigned int unique_index, typename word_t>
-inline safe_bit_field<unique_index, word_t> operator^(bool, safe_bit_field<unique_index, word_t> rhs)
-{
-	Forbidden_conversion<word_t> forbidden_conversion; return rhs;
-}
-template <unsigned int unique_index, typename word_t>
-inline safe_bit_field<unique_index, word_t> operator==(bool, safe_bit_field<unique_index, word_t> rhs)
-{
-	Forbidden_conversion<word_t> forbidden_conversion; return rhs;
-}
-template <unsigned int unique_index, typename word_t>
-inline safe_bit_field<unique_index, word_t> operator!=(bool, safe_bit_field<unique_index, word_t> rhs)
-{
-	Forbidden_conversion<word_t> forbidden_conversion; return rhs;
-}
-
-
-template <unsigned int unique_index, typename word_t = unsigned long>
-class safe_bit_const {
-
-public:
-
-	// Static factory constructor.
-	template <unsigned int i> static safe_bit_const make_bit_const()
-	{
-
-		ASSERT(i <= 8 * sizeof(word_t));
-		ASSERT(sizeof(safe_bit_const) == sizeof(word_t));
-		/*You may notice that there is a redundant test for inside the shift operator, even though
-		the shift can never be evaluated for i == 0. It is not required, but some compilers see
-		shift by i-1 and complain that for i == 0 the number is invalid, without checking whether
-		or not the shift is actually evaluated.*/
-		return safe_bit_const((i > 0) ? (word_t(1) << ((i > 0) ? (i - 1) : 0)) : 0);
-	}
-
-	// Corresponding bit field type.
-	typedef safe_bit_field<unique_index, word_t> field_t;
-	friend class safe_bit_field<unique_index, word_t>;
-
-	// Copy constructor and assignment operators.
-	safe_bit_const(const safe_bit_const& rhs) : word(rhs.word) {}
-	safe_bit_const operator=(safe_bit_const rhs) { word = rhs.word; return *this; }
-
-	// Comparison operators.
-	bool operator==(safe_bit_const rhs) const { return word == rhs.word; }
-	bool operator!=(safe_bit_const rhs) const { return word != rhs.word; }
-	bool operator< (safe_bit_const rhs) const { return word < rhs.word; }
-	bool operator> (safe_bit_const rhs) const { return word > rhs.word; }
-	bool operator<=(safe_bit_const rhs) const { return word <= rhs.word; }
-	bool operator>=(safe_bit_const rhs) const { return word >= rhs.word; }
-	//
-	bool operator==(field_t rhs) const { return word == rhs.word; }
-	bool operator!=(field_t rhs) const { return word != rhs.word; }
-	bool operator< (field_t rhs) const { return word < rhs.word; }
-	bool operator> (field_t rhs) const { return word > rhs.word; }
-	bool operator<=(field_t rhs) const { return word <= rhs.word; }
-	bool operator>=(field_t rhs) const { return word >= rhs.word; }
-
-	// Bitwise operations.
-	safe_bit_const operator|(safe_bit_const rhs) const { return safe_bit_const(word | rhs.word); }
-	safe_bit_const operator&(safe_bit_const rhs) const { return safe_bit_const(word & rhs.word); }
-	safe_bit_const operator^(safe_bit_const rhs) const { return safe_bit_const(word ^ rhs.word); }
-	safe_bit_const operator~() const { return safe_bit_const(~word); }
-	safe_bit_const operator|=(safe_bit_const rhs) { word |= rhs.word; return safe_bit_const(*this); }
-	safe_bit_const operator&=(safe_bit_const rhs) { word &= rhs.word; return safe_bit_const(*this); }
-	safe_bit_const operator^=(safe_bit_const rhs) { word ^= rhs.word; return safe_bit_const(*this); }
-	//
-
-	field_t operator|(field_t rhs) const { return field_t(word | rhs.word); }
-	field_t operator&(field_t rhs) const { return field_t(word & rhs.word); }
-	field_t operator^(field_t rhs) const { return field_t(word ^ rhs.word); }
-
-	// Shift operators shift bits inside the bit field. Does not make sense, most of
-	// the time, except perhaps to loop over bit fields and increment them.
-	safe_bit_const operator<< (unsigned int s) { return safe_bit_const(word << s); }
-	safe_bit_const operator>> (unsigned int s) { return safe_bit_const(word >> s); }
-	safe_bit_const operator<<=(unsigned int s) { word <<= s; return *this; }
-	safe_bit_const operator>>=(unsigned int s) { word >>= s; return *this; }
-
-	// Word size is also the maximum number of different bit fields for a given word type.
-	static size_t size() { return sizeof(word_t); }
-
-	// Type of the bit field is available if needed.
-	typedef word_t bit_word_t;
-
-	////////////////////////////////////////////////////////////////////////////////
-	//////////////////////////////////////////////////////////
-private:
-
-	// Private constructor from an integer type.
-	explicit safe_bit_const(word_t init) : word(init) {}
-
-	// Bits - the real data.
-	word_t word;
-
-	// Here comes the interesting stuff: all the operators designed to trap
-	// unintended conversions and make them not compile.
-	// Operators below handle code like this:
-	// safe_bit_const<1> label1;
-	// safe_bit_const<2> label2;
-	// if ( label1 & label2 ) { ... }
-	//
-	// These operators are private, and will not instantiate in any event because of
-	//the incomplete forbidden_conversion struct.
-	template <typename T> safe_bit_const operator|(T) const
-	{
-		Forbidden_conversion<T> forbidden_conversion; return *this;
-	}
-	template <typename T> safe_bit_const operator&(T) const
-	{
-		Forbidden_conversion<T> forbidden_conversion; return *this;
-	}
-	template <typename T> safe_bit_const operator^(T) const
-	{
-		Forbidden_conversion<T> forbidden_conversion; return *this;
-	}
-	template <typename T> safe_bit_const operator|=(T) const
-	{
-		Forbidden_conversion<T> forbidden_conversion; return *this;
-	}
-	template <typename T> safe_bit_const operator&=(T) const
-	{
-		Forbidden_conversion<T> forbidden_conversion; return *this;
-	}
-	template <typename T> safe_bit_const operator^=(T) const
-	{
-		Forbidden_conversion<T> forbidden_conversion; return *this;
-	}
-
-	// And the same thing for comparisons:
-	// if ( label1 == label2 ) { ... }
-	template <typename T> bool operator==(const T) const
-	{
-		Forbidden_conversion<T> forbidden_conversion; return true;
-	}
-	template <typename T> bool operator!=(const T) const
-	{
-		Forbidden_conversion<T> forbidden_conversion; return true;
-	}
-	template <typename T> bool operator<(const T) const
-	{
-		Forbidden_conversion<T> forbidden_conversion; return true;
-	}
-	template <typename T> bool operator>(const T) const
-	{
-		Forbidden_conversion<T> forbidden_conversion; return true;
-	}
-	template <typename T> bool operator<=(const T) const
-	{
-		Forbidden_conversion<T> forbidden_conversion; return true;
-	}
-	template <typename T> bool operator>=(const T) const
-	{
-		Forbidden_conversion<T> forbidden_conversion; return true;
-	}
-};
-
-
-// All macros are conditionally defined to use the safe_bit_field classes if
-// SAFE_BIT_FIELD is defined.
 #ifdef _DEBUG
-#define SAFE_BIT_FIELD
-#endif
+//used to create a unique id for the template
+struct bitfield_unique_id {};
 
-// Field type declaration.
-/*You may notice that there is a redundant test for inside the shift operator, even though
-the shift can never be evaluated for i == 0. It is not required, but some compilers see
-shift by i-1 and complain that for i == 0 the number is invalid, without checking whether
-or not the shift is actually evaluated.*/
-#ifdef SAFE_BIT_FIELD
-#define BIT_FIELD(u_index, word_t ) typedef safe_bit_field<u_index, word_t>
-#else
-#define BIT_FIELD(u_index, word_t ) typedef word_t
-#endif // SAFE_BIT_FIELD
+//forward declaration of checked_bit_mask
+//word_t type of "word" to store the bits - should be an integer type
+//unique_id - what makes the bit fields into unique types
+template <bitfield_unique_id* unique_id, typename word_t>
+class checked_bit_mask;
 
-// Bit constant declaration.
-#ifdef SAFE_BIT_FIELD
-#define BIT_CONST( field_t, label, bit_index ) static const field_t::const_t label = field_t::const_t::make_bit_const<bit_index>()
-#else
-constexpr size_t make_bit_const(size_t i) { return (i > 0) ? (size_t(1) << ((i > 0) ? (i - 1) : 0)) : 0; }
-#define BIT_CONST( field_t, label, bit_index ) static constexpr field_t label =static_cast<field_t>(make_bit_const(bit_index))
-#endif // SAFE_BIT_FIELD
+//class declaration
+template <bitfield_unique_id* unique_id, typename word_t>
+class checked_bit_field
+{
+private:
+    //the actual field.
+    word_t word;
 
-// Complex bit constant declaration.
-#ifdef SAFE_BIT_FIELD
-#define BIT_CONSTS( field_t, label ) static const field_t::const_t label
-#else
-#define BIT_CONSTS( field_t, label ) static const field_t label
-#endif // SAFE_BIT_FIELD
+    //private constructor from an integer type.
+    explicit checked_bit_field(word_t init) : word(init) {}
 
-// Maximum number of bits for a given type:
-#ifdef SAFE_BIT_FIELD
-#define BIT_FIELD_COUNT( field_t ) field_t::size()
+public:
+    //For convenience with macros, we declare checked_bit_field::fieldbit_t
+    typedef checked_bit_mask<unique_id, word_t> fieldbit_t;
+    friend class checked_bit_mask<unique_id, word_t>;
+
+    //--Constructors--
+    //default constructor - our "word" is zeroed
+    explicit checked_bit_field() : word(0) {}
+    //copy constructor
+    checked_bit_field(const checked_bit_field& rhs) : word(rhs.word) {}
+    //copy constructor from bit mask
+    checked_bit_field(const fieldbit_t& rhs) : word(rhs.word) {}
+    //copy constructor from 0
+    checked_bit_field(const std::nullptr_t& rhs) : word(0) { UNREFERENCED_PARAMETER(rhs); }
+
+    //--Copy Assignments--
+    //copy assignment operator
+    checked_bit_field& operator=(const checked_bit_field& rhs) { if (this != &rhs) word = rhs.word; return *this; }
+    //copy assignment operator from bit mask
+    checked_bit_field& operator=(const fieldbit_t& rhs) { word = rhs.word; return *this; }
+    //assignment operator to allow for assigning 0 (clearing bits)
+    checked_bit_field& operator=(const std::nullptr_t& rhs) { word = 0; return *this; }
+
+
+    //--Operations--
+
+    //0/NULL/nullptr to bitfield comparison operators
+    friend bool operator==(std::nullptr_t, checked_bit_field) { return word == 0; }
+    friend bool operator!=(std::nullptr_t, checked_bit_field) { return word != 0; }
+    friend bool operator<=(std::nullptr_t, checked_bit_field) { return word <= 0; }
+    friend bool operator>=(std::nullptr_t, checked_bit_field) { return word >= 0; }
+    friend bool operator< (std::nullptr_t, checked_bit_field) { return word <  0; }
+    friend bool operator> (std::nullptr_t, checked_bit_field) { return word >  0; }
+    //bitfield to 0/NULL/nullptr comparison operators
+    bool operator==(std::nullptr_t) const { return word == 0; }
+    bool operator!=(std::nullptr_t) const { return word != 0; }
+    bool operator<=(std::nullptr_t) const { return word <= 0; }
+    bool operator>=(std::nullptr_t) const { return word >= 0; }
+    bool operator< (std::nullptr_t) const { return word <  0; }
+    bool operator> (std::nullptr_t) const { return word >  0; }
+    //bitfield to bitfield comparison operators
+    bool operator==(const checked_bit_field& rhs) const { return word == rhs.word; }
+    bool operator!=(const checked_bit_field& rhs) const { return word != rhs.word; }
+    bool operator<=(const checked_bit_field& rhs) const { return word <= rhs.word; }
+    bool operator>=(const checked_bit_field& rhs) const { return word >= rhs.word; }
+    bool operator< (const checked_bit_field& rhs) const { return word <  rhs.word; }
+    bool operator> (const checked_bit_field& rhs) const { return word >  rhs.word; }
+    //bitfield to bitmask comparison operators
+    bool operator==(const fieldbit_t& rhs) const { return word == rhs.word; }
+    bool operator!=(const fieldbit_t& rhs) const { return word != rhs.word; }
+    bool operator<=(const fieldbit_t& rhs) const { return word <= rhs.word; }
+    bool operator>=(const fieldbit_t& rhs) const { return word >= rhs.word; }
+    bool operator< (const fieldbit_t& rhs) const { return word <  rhs.word; }
+    bool operator> (const fieldbit_t& rhs) const { return word >  rhs.word; }
+    //bitfield to bitfield bitwise operators
+    checked_bit_field  operator~ () const { return checked_bit_field(~word); }
+    checked_bit_field& operator&=(const checked_bit_field& rhs) { word &= rhs.word; return *this; }
+    checked_bit_field& operator|=(const checked_bit_field& rhs) { word |= rhs.word; return *this; }
+    checked_bit_field& operator^=(const checked_bit_field& rhs) { word ^= rhs.word; return *this; }
+    checked_bit_field  operator& (const checked_bit_field& rhs) const { return checked_bit_field(word & rhs.word); }
+    checked_bit_field  operator| (const checked_bit_field& rhs) const { return checked_bit_field(word | rhs.word); }
+    checked_bit_field  operator^ (const checked_bit_field& rhs) const { return checked_bit_field(word ^ rhs.word); }
+
+    //bitfield to bitmask bitwise operators
+    checked_bit_field& operator&=(const fieldbit_t& rhs) { word &= rhs.word; return *this; }
+    checked_bit_field& operator|=(const fieldbit_t& rhs) { word |= rhs.word; return *this; }
+    checked_bit_field& operator^=(const fieldbit_t& rhs) { word ^= rhs.word; return *this; }
+    checked_bit_field  operator& (const fieldbit_t& rhs) const { return checked_bit_field(word & rhs.word); }
+    checked_bit_field  operator| (const fieldbit_t& rhs) const { return checked_bit_field(word | rhs.word); }
+    checked_bit_field  operator^ (const fieldbit_t& rhs) const { return checked_bit_field(word ^ rhs.word); }
+
+    //shift operators for all integer types
+    checked_bit_field& operator<<=(unsigned int s) { static_assert(s <= 8 * sizeof(word_t), "shift larger than word"); word <<= s; return *this; }
+    checked_bit_field& operator>>=(unsigned int s) { static_assert(s <= 8 * sizeof(word_t), "shift larger than word"); word >>= s; return *this; }
+    checked_bit_field  operator<< (unsigned int s) const { static_assert(s <= 8 * sizeof(word_t), "shift larger than word"); return checked_bit_field(word << s); }
+    checked_bit_field  operator>> (unsigned int s) const { static_assert(s <= 8 * sizeof(word_t), "shift larger than word"); return checked_bit_field(word >> s); }
+
+    bool operator!() { if (word == 0) return true; else return false; }
+    //conversion to bool - need explicit as bool can convert to integer (i.e. 0 or 1)
+    explicit operator bool() const { if (word == 0) return false; else return true; }
+};
+
+template <bitfield_unique_id* unique_id, typename word_t>
+class checked_bit_mask {
+private:
+    //the bit mask
+    word_t word;
+
+    // private constructor from an integer type.
+    explicit checked_bit_mask(word_t init) : word(init) {}
+
+public:
+    //static factory constructor
+    //we use a template so we can validate on compile that the bit being set isn't greater than the size of the word
+    template <unsigned int i> static checked_bit_mask set_bit()
+    {
+        static_assert(i <= 8 * sizeof(word_t), "bit to set must be within bounds of field");
+        /*You may notice that there is a redundant test for inside the shift operator, even though
+        the shift can never be evaluated for i == 0. It is not required, but some compilers see
+        shift by i-1 and complain that for i == 0 the number is invalid, without checking whether
+        or not the shift is actually evaluated.*/
+        return checked_bit_mask((i > 0) ? (word_t(1) << ((i > 0) ? (i - 1) : 0)) : 0);
+    }
+    template <unsigned int i> static checked_bit_mask set_bits()
+    {
+        static_assert(i <= ((2 << (8 * sizeof(word_t))) - 1), "value is greater than number of bit combinations"); //2 raised to the power of number of bits - 1, gives the unsigned interger value
+        return checked_bit_mask(i);
+    }
+
+    // Corresponding bit field type.
+    typedef checked_bit_field<unique_id, word_t> field_t;
+    friend class checked_bit_field<unique_id, word_t>;
+
+    //--Constructors--
+    //default constructor - our "word" is zeroed
+    explicit checked_bit_mask() : word(0) {}
+    //copy constructor
+    checked_bit_mask(const checked_bit_mask& rhs) : word(rhs.word) {}
+
+
+    //--Operations--
+
+    //bitmask to bitfield comparison operators
+    bool operator==(const field_t& rhs) const { return word == rhs.word; }
+    bool operator!=(const field_t& rhs) const { return word != rhs.word; }
+    bool operator<=(const field_t& rhs) const { return word <= rhs.word; }
+    bool operator>=(const field_t& rhs) const { return word >= rhs.word; }
+    bool operator< (const field_t& rhs) const { return word <  rhs.word; }
+    bool operator> (const field_t& rhs) const { return word >  rhs.word; }
+
+    //bitfield to bitfield bitwise operators
+    checked_bit_mask operator~() const { return checked_bit_mask(~word); }
+    checked_bit_mask operator|(const checked_bit_mask& rhs) const { return checked_bit_mask(word | rhs.word); }
+    checked_bit_mask operator&(const checked_bit_mask& rhs) const { return checked_bit_mask(word & rhs.word); }
+    checked_bit_mask operator^(const checked_bit_mask& rhs) const { return checked_bit_mask(word ^ rhs.word); }
+
+    //bitmask to bitfield bitwise operators
+    field_t operator|(const field_t& rhs) const { return field_t(word | rhs.word); }
+    field_t operator&(const field_t& rhs) const { return field_t(word & rhs.word); }
+    field_t operator^(const field_t& rhs) const { return field_t(word ^ rhs.word); }
+};
+
+
+// All macros are conditionally defined to use the checked_bit_field classes if _DEBUG is defined.
+//bit field type declaration - BIT_FIELD(long, mybitfield);
+#define BIT_FIELD( word_t,  bitfield_t ) extern bitfield_unique_id ui_##bitfield_t; typedef checked_bit_field<&ui_##bitfield_t, word_t> bitfield_t
+//bit mask declaration - BIT_MASK(mybitfield, mask1, 0); BIT_MASK(mybitfield, mask2, 1);
+#define BIT_MASK( bitfield_t, label, bit_pos ) const bitfield_t::fieldbit_t label = bitfield_t::fieldbit_t::set_bit<bit_pos>()
+//bit mask declaration with integer - INT_BIT_MASK(mybitfield, mask1and2, 3)
+#define INT_BIT_MASK( bitfield_t, label, int_mask) const bitfield_t::fieldbit_t label = bitfield_t::fieldbit_t::set_bits<int_mask>()
+//complex bit constant declaration - BIT_MASKS(mybitfield, complexbitmask) = mask1 | mask2;
+#define BIT_MASKS( bitfield_t, label ) const field_t::fieldbit_t label
 #else
-#define BIT_FIELD_COUNT( field_t ) (8*sizeof(field_t))
+//bit field type declaration - BIT_FIELD(long, mybitfield);
+#define BIT_FIELD(word_t, bitfield_t ) typedef word_t bitfield_t
+//bit mask declaration - BIT_MASK(mybitfield, mask1, 0); BIT_MASK(mybitfield, mask2, 1);
+inline constexpr unsigned int returnbit(unsigned int i) { return (i > 0) ? (1u << (i - 1)) : 0; };
+#define BIT_MASK( bitfield_t, label, bit_pos ) static constexpr bitfield_t label = returnbit(bit_pos)
+//bit mask declaration with integer - INT_BIT_MASK(mybitfield, mask1and2, 3)
+#define INT_BIT_MASK( bitfield_t, label, int_mask) static constexpr bitfield_t label = int_mask
+//complex bit constant declaration - BIT_MASKS(mybitfield, complexbitmask) = mask1 | mask2;
+#define BIT_MASKS( field_t, label ) static const field_t label
 #endif // SAFE_BIT_FIELD

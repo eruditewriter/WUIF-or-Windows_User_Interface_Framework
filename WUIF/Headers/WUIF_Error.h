@@ -12,57 +12,89 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.*/
 #pragma once
-//#include <strsafe.h>
-#include <windows.h>
+//include Windows.h before including this file
+
+//Define declarations for debugging
+
+#include <stdarg.h>  //needed for _vstprintf_s
 #ifdef _DEBUG
+//_CRTDBG_MAP_ALLOC define is needed for debug heap manager and evaluating "new" and should come
+//before including crtdbg.h
 #define _CRTDBG_MAP_ALLOC
+#include <crtdbg.h>  //crtdbg.h is needed for _ASSERTE and for map_alloc
+#endif _DEBUG
+#ifndef _UNICODE
+#include <stdio.h>
+#endif //_UNICODE
 #include <stdlib.h>
-#include <crtdbg.h>
-#include <strsafe.h>
-#define DBG_NEW new ( _NORMAL_BLOCK , __FILE__ , __LINE__ )
-#define new DBG_NEW
-#endif  // _DEBUG
-//#include <stdexcept>
-//#include <winerror.h>
 
-class WUIF_exception {
-private:
-	LPTSTR wmsg;
-public:
-	explicit WUIF_exception(const LPTSTR msg) throw();
+namespace WUIF {
 
-	const LPTSTR WUIFWhat() const { return wmsg; };
-};
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable: 26481) //don't use pointer arithmetic
+#endif
+    inline void DebugPrint(const TCHAR *format, ...)
+    {
+        constexpr int bufsize = 4096 - sizeof(DWORD); //max message length for use with OutputDebugString, first DWORD bytes contain process identifier the other is for the message
+        TCHAR buf[bufsize] = {};
+        TCHAR *output = &buf[0];
+#pragma warning(suppress: 26494) //variable is uninitialized, we do not initialize a va_list
+        va_list args;
+        va_start(args, format);
+        const int n = _vstprintf_s(&buf[0], bufsize - 3, format, args); //buf-3 is room for CR/LF/NUL
+        va_end(args);
+        output += (n < 0) ? bufsize - 3 : n; //set output to the last character, n is negative if _vstprintf_s fails so set to end of max buf size
+        while ((output > &buf[0]) && (isspace(output[-1]))) //remove line terminations (and consequently trailing whitespace)
+            *--output = '\0';
+        *output++ = '\r';
+        *output++ = '\n';
+        *output = '\0';
+        OutputDebugString(&buf[0]);
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif //_MSC_VER
+    }
 
+    //WUIF Exception structures
+    class WUIF_exception {
+    private:
+        LPTSTR wmsg;
+    public:
+        explicit WUIF_exception(_In_ const LPTSTR msg) throw();
 
-#ifdef _DEBUG //declarations for use with debugging
-#define ASSERT(expr) _ASSERTE(expr)
-#define AssertIfFailed(expr) ASSERT(SUCCEEDED(expr))
-#define ThrowIfFailed(expr)  ASSERT(SUCCEEDED(expr))
+        const LPTSTR WUIFWhat() const { return wmsg; };
+    };
+} //end namespace WUIF
+#ifdef _DEBUG
+    //DBG_NEW is the definition for the debug heap manager and evaluating "new"
+    #define DBG_NEW new ( _NORMAL_BLOCK , __FILE__ , __LINE__ )
+    #define ThrowIfFalse(expr)   _ASSERTE(expr)
+    #define ThrowIfFailed(expr)  _ASSERTE(SUCCEEDED(expr))
+    #define AssertIfFailed(expr) _ASSERTE(SUCCEEDED(expr))
 
-//debug output function
-inline void TRACE(TCHAR const * const format, ...)
-{
-	va_list args;
-	va_start(args, format);
-	TCHAR output[512];
-	vswprintf_s(output, format, args);
-	OutputDebugString(output);
-	va_end(args);
+#else //define declarations for release build
+    #define DBG_NEW new
+
+namespace WUIF {
+    inline void AssertIfFailed(HRESULT hr) {}
+    inline void ThrowIfFailed(HRESULT hr)
+    {
+        if (hr < 0) {
+            SetLastError(hr); throw WUIF_exception(_T("Critical Failure"));
+        }
+    }
+    inline void ThrowIfFalse(bool expr)
+    {
+        if (expr == false) {
+            throw WUIF_exception(_T("Critical Failure"));
+        }
+    }
 }
-#else //define declarations for release
-#define ASSERT(expr) (expr)
-#define VERIFY(expr) (expr)
-#define TRACE __noop
+#endif //_DEBUG
 
-inline void ThrowIfFailed(HRESULT hr)
-{
-	if (hr < 0) {
-		SetLastError(hr); throw WUIF_exception(_T("Critical Failure"));
-	}
-}
-#endif //declarations for use with debugging
-
+#include <winerror.h>
+//WUIF ERROR CODES
 /*Per winerror.h
 
 Values are 32 bit values laid out as follows:
@@ -92,25 +124,15 @@ Code - is the facility's status code
 
 Hence:
 Sev
-2 (0010) - Customer defined Success
-6 (0110) - Customer defined Informational
-A (1010) - Customer defined Warning
-E (1110) - Customer defined Error
+0x2 (0010) - Customer defined Success
+0x6 (0110) - Customer defined Informational
+0xA (1010) - Customer defined Warning
+0xE (1110) - Customer defined Error
 */
-/*
-typedef long WUF_ERR;
-#define WUF_ERR_TYPEDEF(_sc) ((WUF_ERR)_sc)
-#define WE_OK              WUF_ERR_TYPEDEF(0x00000000L)
-#define WE_FAIL		       WUF_ERR_TYPEDEF(0x66600000L)
-#define WE_INVALIDARG      WUF_ERR_TYPEDEF(0x66600001L)
-#define WE_D3D12_NOT_FOUND WUF_ERR_TYPEDEF(0xA87E0001L)
-*/
-const long WE_OK = 0x20000000L;
-const long WE_FAIL = 0xA0000001L;
-const long WE_CRITFAIL = 0xE000042BL;
-const long WE_INVALIDARG = 0xA0070057L;
-const long WE_D3D12_NOT_FOUND = 0xA87E0001L;
-const long WE_WNDPROC_EXCEPTION = 0xE0007574L;
 
-
-struct WUIF_terminate_exception {};
+const unsigned long WE_OK                = 0x20000000L;
+const unsigned long WE_FAIL              = 0xA0000001L;
+const unsigned long WE_CRITFAIL          = 0xE000042BL;
+const unsigned long WE_INVALIDARG        = 0xA0070057L;
+const unsigned long WE_D3D12_NOT_FOUND   = 0xA87E0001L;
+const unsigned long WE_WNDPROC_EXCEPTION = 0xE0007574L;
