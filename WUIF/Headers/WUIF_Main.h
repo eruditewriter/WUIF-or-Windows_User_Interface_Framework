@@ -12,15 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.*/
 // WUIF_Main.h : Windows UI Framework main header file
-//
 #pragma once
 
 namespace WUIF {
-    extern const unsigned int flagexpr;
+    //extern void __fastcall changeconst(_In_ void *var, _In_ void *value);
     int Run(_In_opt_ int accelresource);
 }
 
 extern "C" {
     int main(int argc, char *argv[]);
-    void changeconst(void *var, void *value);
 }
