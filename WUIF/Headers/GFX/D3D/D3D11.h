@@ -12,19 +12,21 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.*/
 #pragma once
-#include <wrl/client.h> //needed for ComPtr
+#include <wrl/client.h>  //needed for ComPtr
+#include <d3d11_4.h>     //needed for D3D11 resources
 #include <unordered_map>
-#include <d3d11_4.h>    //needed for D3D11 resources
+#include "GFX\DXGI\DXGI.h"
 
 namespace WUIF {
     class Window;
+    class D3D11Resources;
 
     typedef void(*FPTR)(D3D11Resources*);
 
-    class D3D11Resources
+    class D3D11Resources : public DXGIResources
     {
     public:
-         D3D11Resources(Window&);
+        D3D11Resources(Window * const);
         ~D3D11Resources();
 
         //variables
@@ -41,16 +43,18 @@ namespace WUIF {
         static Microsoft::WRL::ComPtr<ID3D11InfoQueue>        d3dInfoQueue;
         #endif
 
-        //functions
-        static void CreateStaticResources();
-        void CreateDeviceResources();
-        void ReleaseNonStaticResources();
-        void RegisterResourceCreation(FPTR, unsigned int);
-        void UnregisterResourceCreation(FPTR);
+        static UINT d3d11Flags; //device creation flags used by D3D11CreateDevice;
 
-        Window &window;
-    private:
-        void CreateRenderTargets();
+        //functions
+        static void CreateD3D11StaticResources();
+        void CreateD3D11DeviceResources();
+        void ReleaseD3D11NonStaticResources();
+        void RegisterD3D11ResourceCreation(FPTR, unsigned int);
+        void UnregisterD3D11ResourceCreation(FPTR);
+
+        //Window &window;
+    protected:
+        void CreateD3D11RenderTargets();
         std::unordered_multimap<unsigned int, FPTR> createresources;
     };
 }

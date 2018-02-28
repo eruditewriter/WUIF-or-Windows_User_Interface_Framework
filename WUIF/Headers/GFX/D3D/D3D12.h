@@ -15,14 +15,15 @@ limitations under the License.*/
 #include <wrl/client.h> //needed for ComPtr
 #include <d3d12.h>      //needed for D3D12 resources
 #include <d3d11on12.h>  //needed for D2D resources when using D3D12
+#include "GFX\D2D\D2D.h"
 
 namespace WUIF {
     class Window;
 
-    class D3D12Resources
+    class D3D12Resources : public D2DResources
     {
     public:
-        D3D12Resources(Window&);
+        D3D12Resources(Window * const);
         ~D3D12Resources();
 
         static Microsoft::WRL::ComPtr<ID3D12Device>       d3d12Device;
@@ -30,11 +31,10 @@ namespace WUIF {
         static Microsoft::WRL::ComPtr<ID3D11On12Device>   d3d11on12Device;  //Direct3311on12 device (win >=10)
 
                                                                             //functions
-        static void CreateStaticResources();
-        void ReleaseNonStaticResources();
+        static void CreateD3D12StaticResources();
+        void ReleaseD3D12NonStaticResources();
 
-        Window &window;
-    private:
-
+        //Window &window;
+    protected:
     };
 }
