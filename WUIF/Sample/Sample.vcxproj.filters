@@ -27,8 +27,8 @@
     <ClInclude Include="Headers\Sample.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Headers\resource.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="Resources\resource.h">
+      <Filter>Resource Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -43,5 +43,8 @@
     <ResourceCompile Include="Resources\Sample.rc">
       <Filter>Resource Files</Filter>
     </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Manifest Include="sample.manifest" />
   </ItemGroup>
 </Project>
