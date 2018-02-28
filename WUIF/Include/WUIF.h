@@ -14,33 +14,35 @@ limitations under the License.*/
 // WUIF.h : Windows UI Framework general header file
 //
 #pragma once
-#pragma comment(lib, "d2d1")
-#pragma comment(lib, "dwrite")
-#pragma comment(lib, "d3d11")
-#ifdef USED3D12
-#pragma comment(lib, "d3d12")
-#endif // USED3D12
-#pragma comment(lib, "dxgi")
-#pragma comment(lib, "shcore")
-#ifdef _DEBUG
-#pragma comment(lib, "dxguid") //needed for dxgi debug features
-#endif // _DEBUG
-
+#ifdef _MSC_VER
+//linker options
 #ifdef _UNICODE
 #pragma comment(linker, "/SUBSYSTEM:WINDOWS,6.01 /ENTRY:wWinMainCRTStartup")
 #else
 #pragma comment(linker, "/SUBSYSTEM:WINDOWS,6.01 /ENTRY:WinMainCRTStartup")
-#endif
+#endif // _UNICODE
+#pragma comment(lib, "dxgi")
+#ifdef _DEBUG
+#pragma comment(lib, "dxguid") //needed for dxgi debug features
+#endif // _DEBUG
+#ifdef USED3D12
+#pragma comment(lib, "d3d12")
+#endif // USED3D12
+#pragma comment(lib, "d3d11")
+#pragma comment(lib, "d2d1")
+#pragma comment(lib, "dwrite")
+
+//using Common Controls V6
+#pragma comment(linker,"\"/manifestdependency:type='win32' \
+name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
+processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
+#endif // _MSC_VER
 
 #include "..\Headers\WUIF_Main.h"
 #include "..\Headers\WUIF_Error.h"
 #include "..\Headers\Application\Application.h"
 #include "..\Headers\Window\Window.h"
 #include "..\Headers\GFX\GFX.h"
-#include "..\Headers\GFX\DXGI\DXGI.h"
-#include "..\Headers\GFX\D3D\D3D11.h"
-#include "..\Headers\GFX\D3D\D3D12.h"
-#include "..\Headers\GFX\D2D\D2D.h"
 
 
 //define to indicate on hybrid graphics systems to prefer the discrete part by default
@@ -52,23 +54,21 @@ extern "C"
 }
 #endif
 
-#define warpflag  1u << (1 - 1)
-#define d2dflag   1u << (2 - 1)
-#define d3d11flag 1u << (3 - 1)
-#define d3d12flag 1u << (4 - 1)
-
+/*we have to use the following approach to set WUIF::App::GFXflags because we want the variable to
+placed in writable memory and we must define that in the assembly, so to work around this we create
+another variable that we will later assign*/
 #ifdef USED2D //set application flag based on defines - D2D requires D3D11
     #ifdef USED3D12
         #ifdef USEWARP
-            const unsigned int WUIF::flagexpr = d2dflag | d3d11flag | d3d12flag | warpflag;
+            namespace WUIF { extern const FLAGS::GFX_Flags flagexpr = FLAGS::D2D | FLAGS::D3D11 | FLAGS::D3D12 | FLAGS::WARP; }
         #else
-            const unsigned int WUIF::flagexpr = d2dflag | d3d11flag | d3d12flag;
+            namespace WUIF { extern const FLAGS::GFX_Flags flagexpr = FLAGS::D2D | FLAGS::D3D11 | FLAGS::D3D12; }
         #endif //USEWARP
     #else
         #ifdef USEWARP
-            const unsigned int WUIF::flagexpr = d2dflag | d3d11flag | warpflag;
+            namespace WUIF { extern const FLAGS::GFX_Flags flagexpr = FLAGS::D2D | FLAGS::D3D11 | FLAGS::WARP; }
         #else
-            const unsigned int WUIF::flagexpr = d2dflag | d3d11flag;
+            namespace WUIF { extern const FLAGS::GFX_Flags flagexpr = FLAGS::D2D | FLAGS::D3D11; }
         #endif //USEWARP
     #endif //USED3D12
     //perform undefs so we skip the next checks
@@ -80,15 +80,15 @@ extern "C"
 #ifdef USED3D12
     #ifdef USED3D11
         #ifdef USEWARP
-            const unsigned int WUIF::flagexpr = d3d11flag | d3d12flag | warpflag;
+            namespace WUIF { extern const FLAGS::GFX_Flags flagexpr = FLAGS::D3D11 | FLAGS::D3D12 | FLAGS::WARP; }
         #else
-            const unsigned int WUIF::flagexpr = d3d11flag | d3d12flag;
+            namespace WUIF { extern const FLAGS::GFX_Flags flagexpr = FLAGS::D3D11 | FLAGS::D3D12; }
         #endif //USEWARP
     #else
         #ifdef USEWARP
-            const unsigned int WUIF::flagexpr = d3d12flag | warpflag;
+            namespace WUIF { extern const FLAGS::GFX_Flags flagexpr = FLAGS::D3D12 | FLAGS::WARP; }
         #else
-            const unsigned int WUIF::flagexpr = d3d12flag;
+            namespace WUIF { extern const FLAGS::GFX_Flags flagexpr = FLAGS::D3D12; }
         #endif //USEWARP
     #endif //USED3D11
     #undef USED2D
@@ -98,10 +98,10 @@ extern "C"
 #endif //USED3D12
 #ifdef USED3D11 //we can skip D2D, and D3D12 checks, they were already handled
     #ifdef USEWARP
-        const unsigned int WUIF::flagexpr = d3d11flag | warpflag;
+        namespace WUIF { extern const FLAGS::GFX_Flags flagexpr = FLAGS::D3D11 | FLAGS::WARP; }
     #else
-        const unsigned int WUIF::flagexpr = d3d11flag;
-    #endif
+        namespace WUIF { extern const FLAGS::GFX_Flags flagexpr = FLAGS::D3D11; }
+    #endif //USEWARP
     #undef USED2D //undef for consistency
     #undef USED3D11
     #undef USED3D12
