@@ -12,17 +12,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.*/
 #include "stdafx.h"
-#include <string> //needed for int to string conversion
-#include "WUIF_Main.h"
-#include "WUIF_Error.h"
+
 #include "Window\WindowProperties.h"
 #include "Window\Window.h"
+#include "Application\Application.h"
 #include "GFX\GFX.h"
 
 using namespace WUIF;
 
-WindowProperties::WindowProperties(Window *parent_window) :
-    parent(parent_window),
+WindowProperties::WindowProperties(Window *const winptr) :
+    win(winptr),
+    initialized(false),
+    scaleFactor(100),
+    _icon(NULL),
+    _iconsm(NULL),
+    _classcursor(NULL),
+    _windowname(nullptr),
     _height(CW_USEDEFAULT),
     _width(CW_USEDEFAULT),
     _prevheight(0),
@@ -41,69 +46,87 @@ WindowProperties::WindowProperties(Window *parent_window) :
     _style(WS_OVERLAPPEDWINDOW | WS_VISIBLE),
     _prevexstyle(NULL),
     _prevstyle(NULL),
-    _cstyle(CS_HREDRAW | CS_VREDRAW),
-    _windowname(nullptr),
+    //_cstyle(CS_HREDRAW | CS_VREDRAW),
+    //_classname(nullptr),
+
     _menu(NULL),
-    _menuname(nullptr),
-    _icon(NULL),
-    _iconsm(NULL),
-    _cursor(NULL),
+    //_menuname(nullptr),
     _background(),
-    _dpiawareness(NULL),
+    _threaddpiawarenesscontext(NULL),
     _allowfsexclusive(false),
-    _cmdshow(SW_SHOWNORMAL)
+    _cmdshow(SW_SHOWNORMAL),
+    _fullscreen(false)
 {
-    #ifdef _UNICODE
-    std::wstring s = L"Window" + std::to_wstring(parent->instance);
-    #else
-    std::string s = "Window" + std::to_string(parent->instance);
-    #endif
-    _windowname = s.c_str();
-    _icon = LoadIcon(nullptr, IDI_APPLICATION);
-    _cursor = LoadCursor(nullptr, IDC_ARROW);
+    _icon = LoadIcon(NULL, IDI_APPLICATION);
+    _classcursor = LoadCursor(NULL, IDC_ARROW);
+    _iconsm = reinterpret_cast<HICON>(LoadImage(NULL, IDI_APPLICATION, IMAGE_ICON, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_SHARED));
+
     _background[0] = 0.000000000f;
     _background[1] = 0.000000000f;
     _background[2] = 0.000000000f;
     _background[3] = 1.000000000f; //black
-    HINSTANCE lib = LoadLibrary(_T("user32.dll"));
-    if (lib)
+    if (App::winversion >= OSVersion::WIN10_1607)
     {
-        using GETTHREADDPICONTEXT = DPI_AWARENESS_CONTEXT(WINAPI*)(void);
-        GETTHREADDPICONTEXT getthreaddpiawarenesscontext = (GETTHREADDPICONTEXT)GetProcAddress(lib, "GetThreadDpiAwarenessContext");
-        if (getthreaddpiawarenesscontext)
+        HMODULE lib = GetModuleHandle(TEXT("user32.dll"));
+        if (lib)
         {
-            _dpiawareness = getthreaddpiawarenesscontext();
+            using PFN_GET_THREAD_DPI_CONTEXT = DPI_AWARENESS_CONTEXT(WINAPI*)(void);
+            PFN_GET_THREAD_DPI_CONTEXT pfngetthreaddpiawarenesscontext = (PFN_GET_THREAD_DPI_CONTEXT)GetProcAddress(lib, "GetThreadDpiAwarenessContext");
+            if (pfngetthreaddpiawarenesscontext)
+            {
+                _threaddpiawarenesscontext = pfngetthreaddpiawarenesscontext();
+            }
         }
-        FreeLibrary(lib);
     }
 }
 
-void WindowProperties::height(const int v)
+WindowProperties::~WindowProperties()
+{
+    if (_windowname != nullptr)
+    {
+        delete[] _windowname;
+        _windowname = nullptr;
+    }
+    if (_menu)
+    {
+        DestroyMenu(_menu);
+        _menu = NULL;
+    }
+    /*if (_menuname != nullptr)
+    {
+        if (!IS_INTRESOURCE(_menuname))
+        {
+            delete _menuname;
+        }
+        _menuname = nullptr;
+    }*/
+}
+
+void WindowProperties::height(_In_ const int v)
 {
     //(v > 1 ? v : 1) = don't allow 0 size value
-    if (parent->initialized)
+    if (initialized)
     {
         _prevheight = _height;
         _height = (v > 1 ? v : 1);
-        _actualheight = parent->Scale(_height);
-        SetWindowPos(parent->hWnd, 0, 0, 0, _actualwidth, _actualheight, (SWP_NOMOVE | SWP_NOZORDER)); //ignore hWndInsertAfter and X, Y
+        _actualheight = Scale(_height);
+        SetWindowPos(win->hWnd, 0, 0, 0, _actualwidth, _actualheight, (SWP_NOMOVE | SWP_NOZORDER)); //ignore hWndInsertAfter and X, Y
     }
     else
     {
         _height = (v > 1 ? v : 1);
     }
-
 }
 
-void WindowProperties::width(const int v)
+void WindowProperties::width(_In_ const int v)
 {
     //(v > 1 ? v : 1) = don't allow 0 size value
-    if (parent->initialized)
+    if (initialized)
     {
         _prevwidth = _width;
         _width = (v > 1 ? v : 1);
-        _actualwidth = parent->Scale(_width);
-        SetWindowPos(parent->hWnd, 0, 0, 0, _actualwidth, _actualheight, (SWP_NOMOVE | SWP_NOZORDER)); //ignore hWndInsertAfter and X, Y
+        _actualwidth = Scale(_width);
+        SetWindowPos(win->hWnd, 0, 0, 0, _actualwidth, _actualheight, (SWP_NOMOVE | SWP_NOZORDER)); //ignore hWndInsertAfter and X, Y
     }
     else
     {
@@ -111,35 +134,36 @@ void WindowProperties::width(const int v)
     }
 }
 
-void WindowProperties::top(const int v)
+void WindowProperties::top(_In_ const int v)
 {
-    if (parent->initialized)
+    if (initialized)
     {
         _prevtop = _top;
         _top = v;
-        SetWindowPos(parent->hWnd, 0, _left, _top, 0, 0, (SWP_NOSIZE | SWP_NOZORDER)); //ignore hWndInsertAfter and cx, cy
+        SetWindowPos(win->hWnd, 0, _left, _top, 0, 0, (SWP_NOSIZE | SWP_NOZORDER)); //ignore hWndInsertAfter and cx, cy
     }
     else
     {
         _top = v;
     }
 }
-void WindowProperties::left(const int v)
+void WindowProperties::left(_In_ const int v)
 {
-    if (parent->initialized)
+    if (initialized)
     {
         _prevleft = _left;
         _left = v;
-        SetWindowPos(parent->hWnd, 0, _left, _top, 0, 0, (SWP_NOSIZE | SWP_NOZORDER)); //ignore hWndInsertAfter and cx, cy
+        SetWindowPos(win->hWnd, 0, _left, _top, 0, 0, (SWP_NOSIZE | SWP_NOZORDER)); //ignore hWndInsertAfter and cx, cy
     }
     else
     {
         _left = v;
     }
 }
-void WindowProperties::exstyle(const DWORD v)
+
+void WindowProperties::exstyle(_In_ const DWORD v)
 {
-    if (parent->initialized)
+    if (initialized)
     {
         /*If the function succeeds, the return value is the previous value of the specified offset.
         If the function fails, the return value is zero. To get extended error information, call GetLastError.
@@ -148,7 +172,7 @@ void WindowProperties::exstyle(const DWORD v)
         information by calling SetLastError with 0, then call SetWindowLongPtr. Function failure will be
         indicated by a return value of zero and a GetLastError result that is nonzero.*/
         SetLastError(0);
-        LONG_PTR ret = SetWindowLongPtr(parent->hWnd, GWL_EXSTYLE, v);
+        LONG_PTR ret = SetWindowLongPtr(win->hWnd, GWL_EXSTYLE, v);
         if (ret == 0)
         { //check for failure
             if (GetLastError())
@@ -161,16 +185,17 @@ void WindowProperties::exstyle(const DWORD v)
         _exstyle = v;
         /*Certain window data is cached, so changes you make using SetWindowLongPtr will not take
         effect until you call the SetWindowPos function.*/
-        SetWindowPos(parent->hWnd, 0, 0, 0, 0, 0, (SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE)); //no move, resize, or zorder changes
+        SetWindowPos(win->hWnd, 0, 0, 0, 0, 0, (SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE)); //no move, resize, or zorder changes
     }
     else
     {
         _exstyle = v;
     }
 }
-void WindowProperties::style(const DWORD v)
+
+void WindowProperties::style(_In_ const DWORD v)
 {
-    if (parent->initialized)
+    if (initialized)
     {
         /*If the function succeeds, the return value is the previous value of the specified offset.
         If the function fails, the return value is zero. To get extended error information, call GetLastError.
@@ -179,7 +204,7 @@ void WindowProperties::style(const DWORD v)
         information by calling SetLastError with 0, then call SetWindowLongPtr. Function failure will be
         indicated by a return value of zero and a GetLastError result that is nonzero.*/
         SetLastError(0);
-        LONG_PTR ret = SetWindowLongPtr(parent->hWnd, GWL_STYLE, v);
+        LONG_PTR ret = SetWindowLongPtr(win->hWnd, GWL_STYLE, v);
         if (ret == 0)
         { //check for failure
             if (GetLastError())
@@ -192,110 +217,113 @@ void WindowProperties::style(const DWORD v)
         _style = v;
         /*Certain window data is cached, so changes you make using SetWindowLongPtr will not take
         effect until you call the SetWindowPos function.*/
-        SetWindowPos(parent->hWnd, 0, 0, 0, 0, 0, (SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE)); //no move, resize, or zorder changes
+        SetWindowPos(win->hWnd, 0, 0, 0, 0, 0, (SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE)); //no move, resize, or zorder changes
     }
     else
     {
         _style = v;
     }
 }
-void WindowProperties::classstyle(const UINT v)
+
+/*HRESULT WindowProperties::windowname(_In_ LPCTSTR v)
+Takes a string and if the window is initialized will attempt to set the window text to the string
+and then update _windowname with the new string value.
+
+LPCTSTR v - source string, must be null-terminated
+
+Return value
+HRESULT
+  S_FALSE if 'v' is NULL or SetWindowText fails, otherwise HRESULT of StringCchCopyEx
+*/
+HRESULT WindowProperties::windowname(_In_ LPCTSTR v)
 {
-    if (parent->initialized)
+    if (v == nullptr)
     {
-        SetLastError(0);
-        ULONG_PTR ret = SetClassLongPtr(parent->hWnd, GCL_STYLE, v);
-        if (ret == 0)
-        { //check for failure
-            if (GetLastError())
-            {
-                //failure do not set new value
-                return;
-            }
-        }
-        _cstyle = v;
-        SetWindowPos(parent->hWnd, 0, 0, 0, 0, 0, (SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER)); //no move, resize, or zorder changes
+        return S_FALSE;
     }
-    else
+    if (initialized)
     {
-        _cstyle = v;
-    }
-}
-void WindowProperties::windowname(const LPCTSTR v)
-{
-    if (parent->initialized)
-    {
-        if (SetWindowText(parent->hWnd, v))
+        if (!SetWindowText(win->hWnd, v))
         {
-            _windowname = v;
+            return S_FALSE;
         }
     }
-    else
+    if (_windowname != nullptr)
     {
-        _windowname = v;
+        delete[] _windowname;
     }
+    size_t length = 0;
+    if (FAILED(StringCchLength(v, STRSAFE_MAX_CCH - 1, &length)))
+    {
+        length = STRSAFE_MAX_CCH - 1; //account for last character must be null-terminator
+
+    }
+    _windowname = CRT_NEW TCHAR[length + 1];
+    //copy 'v' to '_windowname' - if a failure _windowname will be empty string
+    return StringCchCopyEx(_windowname, length + 1, v, nullptr, nullptr, STRSAFE_NULL_ON_FAILURE);
 }
 
-void WindowProperties::menuname(const LPCTSTR v)
+bool WindowProperties::menu(_In_ LPCTSTR v)
 {
-    if (parent->initialized)
+    if (v == NULL)
+        return false;
+    HMENU newmenu = LoadMenu(App::hInstance, v);
+    if ( newmenu == 0)
+    {//failure do not set new value
+        return false;
+    }
+    if (initialized)
     {
-        SetLastError(0);
-        ULONG_PTR ret = SetClassLongPtr(parent->hWnd, GCLP_MENUNAME, *v);
-        if (ret == 0)
-        { //check for failure
-            if (GetLastError())
-            {
-                //failure do not set new value
-                return;
-            }
+        if (!SetMenu(win->hWnd, newmenu))
+        {
+            DestroyMenu(newmenu);
+            return false;
         }
-        SetWindowPos(parent->hWnd, 0, 0, 0, 0, 0, (SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER)); //no move, resize, or zorder changes
-        _menuname = v;
+        //clear any cached data
+        SetWindowPos(win->hWnd, 0, 0, 0, 0, 0, (SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER)); //no move, resize, or zorder changes
+    }
+    if (_menu != NULL)
+        DestroyMenu(_menu);
+    _menu = newmenu;
+    return true;
+}
+void WindowProperties::icon(_In_ const HICON v)
+{
+    /*You can override the large or small class icon for a particular window by using the
+    WM_SETICON message*/
+    if (initialized)
+    {
+        //must set ICON_SMALL first and then ICON_BIG or ICON_BIG will fail
+        SendMessage(win->hWnd, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(_iconsm));
+        SetLastError(0);
+        SendMessage(win->hWnd, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(v));
+        DWORD err = GetLastError();
+        if (err == ERROR_SUCCESS)
+        {
+            _icon = v;
+        }
     }
     else
     {
-        _menuname = v;
-    }
-}
-void WindowProperties::icon(const HICON v)
-{
-    if (parent->initialized)
-    {
-        SetLastError(0);
-        ULONG_PTR ret = SetClassLongPtr(parent->hWnd, GCLP_HICON, reinterpret_cast<LONG_PTR>(v));
-        if (ret == 0)
-        { //check for failure
-            if (GetLastError())
-            {
-                //failure do not set new value
-                return;
-            }
-        }
-        SetWindowPos(parent->hWnd, 0, 0, 0, 0, 0, (SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER)); //no move, resize, or zorder changes
         _icon = v;
     }
-    else
-    {
-        _icon = v;
-    }
 }
-void WindowProperties::iconsm(const HICON v)
+void WindowProperties::iconsm(_In_ const HICON v)
 {
-    if (parent->initialized)
+    /*You can override the large or small class icon for a particular window by using the
+    WM_SETICON message*/
+    if (initialized)
     {
         SetLastError(0);
-        ULONG_PTR ret = SetClassLongPtr(parent->hWnd, GCLP_HICONSM, reinterpret_cast<LONG_PTR>(v));
-        if (ret == 0)
-        { //check for failure
-            if (GetLastError())
-            {
-                //failure do not set new value
-                return;
-            }
+        //must pass both ICON_BIG and ICON_SMALL or both will change
+        SendMessage(win->hWnd, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(v));
+        //SetLastError(0);
+        //SendMessage(win->hWnd, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(_icon));
+        DWORD err = GetLastError();
+        if (err == ERROR_SUCCESS)
+        {
+            _iconsm = v;
         }
-        SetWindowPos(parent->hWnd, 0, 0, 0, 0, 0, (SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER)); //no move, resize, or zorder changes
-        _iconsm = v;
     }
     else
     {
@@ -303,30 +331,30 @@ void WindowProperties::iconsm(const HICON v)
     }
 }
 
-void WindowProperties::cursor(const HCURSOR v)
+void WindowProperties::classcursor(_In_ const HCURSOR v)
 {
-    if (parent->initialized)
+    if (initialized)
     {
         SetLastError(0);
-        ULONG_PTR ret = SetClassLongPtr(parent->hWnd, GCLP_HCURSOR, reinterpret_cast<LONG_PTR>(v));
+        ULONG_PTR ret = SetClassLongPtr(win->hWnd, GCLP_HCURSOR, reinterpret_cast<LONG_PTR>(v));
         if (ret == 0)
-        { //check for failure
+        { //0 may still indicate a failure, run GetLastError
             if (GetLastError())
             {
                 //failure do not set new value
                 return;
             }
         }
-        SetWindowPos(parent->hWnd, 0, 0, 0, 0, 0, (SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER)); //no move, resize, or zorder changes
-        _cursor = v;
+        SetWindowPos(win->hWnd, 0, 0, 0, 0, 0, (SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER)); //no move, resize, or zorder changes
+        _classcursor = v;
     }
     else
     {
-        _cursor = v;
+        _classcursor = v;
     }
 }
 
-void WindowProperties::background(const FLOAT v[4])
+void WindowProperties::background(_In_ const FLOAT v[4])
 {
     _background[0] = v[0];
     _background[1] = v[1];
@@ -334,11 +362,36 @@ void WindowProperties::background(const FLOAT v[4])
     _background[3] = v[3];
 }
 
-void WindowProperties::dpiawareness(const DPI_AWARENESS_CONTEXT v)
+/*DPI_AWARENESS_CONTEXT WindowProperties::threaddpiawarenesscontext(_In_ const DPI_AWARENESS_CONTEXT v)
+For Windows 10 versions 1607 and greater
+This function will, if the window is not initialized, set '_threaddpiawarenesscontext' equal to 'v'
+and if the window is initialized it will send a window message (WM_USER+1) to tell the window to
+change it's dpi awarness context. WM_USER+1 is handled by _WndProc and will return the results of
+a call to SetThreadDpiAwarenessContext cast to LRESULT. We must use SendMessage as we need to
+call SetThreadDpiAwarenessContext from the window's thread.
+
+For other versions of Windows this function does nothing and returns NULL.
+*/
+DPI_AWARENESS_CONTEXT WindowProperties::threaddpiawarenesscontext(_In_ const DPI_AWARENESS_CONTEXT v)
 {
-    //only update if the window hasn't been created
-    if (!parent->initialized)
+    LRESULT retval = NULL;
+    //only update if OSVersion is greater than WIN10 1607 (Anniversary Update)
+    if (WUIF::App::winversion >= WUIF::OSVersion::WIN10_1607)
     {
-        _dpiawareness = v;
+        //only update if the window hasn't been created
+        if (initialized)
+        {
+             retval = SendMessage(win->hWnd, WM_USER+1, reinterpret_cast<WPARAM>(v), NULL);
+             if (retval)
+             {
+                 _threaddpiawarenesscontext = v;
+             }
+        }
+        else
+        {
+            _threaddpiawarenesscontext = v;
+            return v;
+        }
     }
+    return reinterpret_cast<DPI_AWARENESS_CONTEXT>(retval);
 }

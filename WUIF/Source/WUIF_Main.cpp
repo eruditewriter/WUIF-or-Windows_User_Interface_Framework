@@ -12,69 +12,106 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.*/
 #include "stdafx.h"
-#include <stdio.h>
 #include <strsafe.h>         //needed for ErrorExit's StringCchPrintf
 #include <ShellScalingApi.h> //needed for PROCESS_DPI_AWARENESS, PROCESS_PER_MONITOR_DPI_AWARE, MONITOR_DPI_TYPE, MDT_EFFECTIVE_DPI
-#include <shellapi.h>
-#include <mbstring.h> //needed for _ismbblead
+#include <mbstring.h>        //needed for _ismbblead in CommandLineToArgvA
 #include "WUIF_Main.h"
-#include "WUIF_Error.h"
 #include "Application\Application.h"
 #include "Window\Window.h"
 #include "GFX\GFX.h" //needed for CheckOS and InitResources
-#include "GFX\DXGI\DXGI.h"
-#include "GFX\D3D\D3D12.h"
-#include "GFX\D3D\D3D11.h"
-#include "GFX\D2D\D2D.h"
 
+//handy macro for D3D12 only flag setting in WUIF::App::GFXflags
+#define D3D12ONLY (WUIF::App::GFXflags & WUIF::FLAGS::D3D12) && (!(WUIF::App::GFXflags & WUIF::FLAGS::D3D11))
 
-WUIF::WUIF_exception::WUIF_exception(_In_ const LPTSTR msg) throw()
-{
-    wmsg = msg;
+namespace WUIF {
+    //forward declaration - this is defined in WUIF.h
+    extern const FLAGS::GFX_Flags flagexpr;
+
+    //definition for WUIF_exception::WUIF_exception found in WUIF_Error.h
+    WUIF_exception::WUIF_exception(_In_ const LPTSTR msg) noexcept
+    {
+        wmsg = msg;
+    }
+
+    namespace App {
+        extern std::mutex veclock;
+        extern bool vecwrite;
+        extern std::condition_variable vecready;
+        extern std::vector<Window*> Windows;
+        extern bool is_vecwritable();
+    }
 }
+
 
 //private namespace for this file only
 namespace {
+    //internal pointers for App::processdpiawareness and App::processdpiawarenesscontext
+    PROCESS_DPI_AWARENESS _processdpiawareness        = PROCESS_DPI_UNAWARE;
+    DPI_AWARENESS_CONTEXT _processdpiawarenesscontext = DPI_AWARENESS_CONTEXT_UNAWARE;
+
+    //special exception class for use in WUIF::Run in case an exception occurs in WndProc
     struct WUIF_WNDPROC_terminate_exception {};
 
+    /*void ErrorExit(_In_ LPTSTR lpszMessage)
+    Executes when an exception occurs. Displays a MessageBox with an error message and the string
+    passed to lpszMessage.
+
+    LPTSTR lpszMessage[in] - string to be displayed along with error message in MessageBox
+
+    Return results - none
+    */
     void ErrorExit(_In_ LPTSTR lpszMessage)
     {
               DWORD   numchars = 0;
               LPVOID  lpMsgBuf = nullptr;
         const DWORD   err      = GetLastError();
 
+        //if a WUIF error constant add appropriate text for error message
         if (err & 0x20000000L) //application defined error
         {
             LPTSTR lpSource = nullptr;
             switch (err)
             {
+                case WE_OK:
+                {
+                    lpSource = TEXT("OK");
+                }
                 case WE_FAIL:
                 {
-                    lpSource = _T("FAIL");
+                    lpSource = TEXT("FAIL");
                 }
-                    break;
+                break;
                 case WE_CRITFAIL:
                 {
-                    lpSource = _T("CRITFAIL");
+                    lpSource = TEXT("CRITFAIL");
                 }
                 break;
                 case WE_INVALIDARG: {
-                    lpSource = _T("INVALIDARG");
+                    lpSource = TEXT("INVALIDARG");
+                }
+                break;
+                case WE_WRONGOSFORAPP: {
+                    lpSource = TEXT("WRONGOSFORAPP");
                 }
                 break;
                 case WE_D3D12_NOT_FOUND:
                 {
-                    lpSource = _T("D3D12_NOT_FOUND");
+                    lpSource = TEXT("D3D12_NOT_FOUND");
                 }
                 break;
                 case WE_WNDPROC_EXCEPTION:
                 {
-                    lpSource = _T("WNDPROC_EXCEPTION");
+                    lpSource = TEXT("WNDPROC_EXCEPTION");
+                }
+                break;
+                case WE_GRAPHICS_INVALID_DISPLAY_ADAPTER:
+                {
+                    lpSource = TEXT("GRAPHICS_INVALID_DISPLAY_ADAPTER");
                 }
                 break;
                 default:
                 {
-                    lpSource = _T("UNDEFINED_WUIF_EXCEPTION");
+                    lpSource = TEXT("UNDEFINED_WUIF_EXCEPTION");
                 }
             }
             numchars = FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_STRING | FORMAT_MESSAGE_IGNORE_INSERTS,
@@ -87,6 +124,7 @@ namespace {
         }
         else
         {
+            //system error - format message with system error codes and locale language
             numchars = FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
               NULL,
               err,
@@ -103,13 +141,13 @@ namespace {
             constexpr unsigned int pszTxtsize = 118;
             lpDisplayBuf = HeapAlloc(GetProcessHeap(),
                                      HEAP_ZERO_MEMORY | HEAP_GENERATE_EXCEPTIONS,
-                                     (pszTxtsize + lstrlen(static_cast<LPCTSTR>(lpszMessage))
+                                     (pszTxtsize + lstrlen(lpszMessage)
                                         + (sizeof(DWORD) + 1) + numchars) * sizeof(TCHAR));
         }
         HRESULT hr = E_FAIL;
         if (lpDisplayBuf)
         {
-            LPCTSTR pszTxt = _T("An unrecoverable critical error was encountered and the application is now terminating!\n\n%s\n\nReported error is %d: %s");
+            LPCTSTR pszTxt = TEXT("An unrecoverable critical error was encountered and the application is now terminating!\n\n%s\n\nReported error is %d: %s");
             hr = StringCchPrintf(static_cast<LPTSTR>(lpDisplayBuf),
                                  HeapSize(GetProcessHeap(), NULL, lpDisplayBuf) / sizeof(TCHAR),
                                  pszTxt,
@@ -119,14 +157,14 @@ namespace {
         {
             MessageBox(NULL,
                        static_cast<LPCTSTR>(lpDisplayBuf),
-                       _T("Critical Error"),
+                       TEXT("Critical Error"),
                        (MB_OK | MB_ICONSTOP | MB_TASKMODAL | MB_TOPMOST | MB_SETFOREGROUND));
         }
         else
         {
             MessageBox(NULL,
-                       _T("An unrecoverable critical error was encountered and the application is now terminating! Unable to retrieve error message."),
-                       _T("Critical Error"),
+                       TEXT("An unrecoverable critical error was encountered and the application is now terminating! Unable to retrieve error message."),
+                       TEXT("Critical Error"),
                        (MB_OK | MB_ICONSTOP | MB_TASKMODAL | MB_TOPMOST | MB_SETFOREGROUND));
         }
         /*LocalFree is not in the modern SDK, so it cannot be used to free the result buffer.
@@ -142,7 +180,17 @@ namespace {
         }
     }
 
-    LPSTR* CommandLineToArgvA(_In_opt_ LPCSTR lpCmdLine, _Out_ int *pNumArgs)
+    /*LPSTR* CommandLineToArgvA(_In_ LPCSTR lpCmdLine, _Out_ int *pNumArgs)
+    Takes the ASCII command line string and splits it into separate args.
+    Equivalent to CommandLineToArgvW
+
+    LPCSTR lpCmdLine[in] - should be GetCommandLineA()
+    int *pNumArgs[out] - pointer to the number of args (ie. argc value of main(argc,argv[]) )
+
+    Return results
+        LPSTR* - pointer to the argv[] array
+    */
+    LPSTR* CommandLineToArgvA(_In_ LPCSTR lpCmdLine, _Out_ int *pNumArgs)
     {
         if (!pNumArgs)
         {
@@ -157,13 +205,13 @@ namespace {
         CHAR programname[MAX_PATH] = {};
         /*pnlength = the length of the string that is copied to the buffer, in characters, not
         including the terminating null character*/
-        DWORD pnlength = GetModuleFileNameA(NULL, programname, MAX_PATH);
+        const DWORD pnlength = GetModuleFileNameA(NULL, programname, MAX_PATH);
         if (pnlength == 0) //error getting program name
         {
             //GetModuleFileNameA will SetLastError
             return NULL;
         }
-        if (*lpCmdLine == NULL)
+        if (lpCmdLine == nullptr)
         {
 
             /*In keeping with CommandLineToArgvW the caller should make a single call to HeapFree
@@ -412,174 +460,333 @@ namespace {
         return argv;
     }
 
+
+    /*void OSCheck()
+    Performs a check for the Windows OS Version and sets WUIF::App::winversion
+    */
     #ifdef _MSC_VER
     #pragma warning(push)
     //GetModuleHandle could return NULL - this should never happen as these are core dll's for any application
     #pragma warning(disable: 6387)
     //using x = pfnx - value pointed to is assigned only once, mark it as a pointer to const
-    #pragma warning(disable: 26496)
+    //#pragma warning(disable: 26496)
     #endif
-    const WUIF::OSVersion OSCheck()
+    void OSCheck()
     {
-        WUIF::DebugPrint(_T("OSCheck"));
+        WUIF::DebugPrint(TEXT("Performing OSCheck and setting DPI Awareness"));
         /*check for Win10 by loading D3D12.dll, then check for specific version.
         If no d3d12 and hence not Win10 no need to try and load a bunch of non existing processes.
         Be more efficient and skip straight to win8/8.1/7 checks*/
-        WUIF::App::libD3D12 = LoadLibrary(_T("D3D12.dll"));
-        if (WUIF::App::libD3D12) //app is on Win10
+        WUIF::OSVersion osver = WUIF::OSVersion::WIN7;
+
+        WUIF::App::libD3D12 = LoadLibrary(TEXT("D3D12.dll"));
+        if (WUIF::App::libD3D12) //app is on Win10, check for which version
         {
-            WUIF::DebugPrint(_T("Windows 10 detected"));
+            WUIF::DebugPrint(TEXT("Windows 10 detected"));
+            //if not using D3D12 do not store libD3D12 for future use, set to NULL instead
             if (!(WUIF::App::GFXflags & WUIF::FLAGS::D3D12))
             {
                 FreeLibrary(WUIF::App::libD3D12);
                 WUIF::App::libD3D12 = NULL;
             }
-            //set the dpi awareness for Win10
-            using PFN_SET_THREAD_DPI_AWARENESS_CONTEXT = DPI_AWARENESS_CONTEXT(WINAPI*)(DPI_AWARENESS_CONTEXT);
-            PFN_SET_THREAD_DPI_AWARENESS_CONTEXT pfnsetthreaddpiawarenesscontext = reinterpret_cast<PFN_SET_THREAD_DPI_AWARENESS_CONTEXT>(GetProcAddress(GetModuleHandle(_T("user32.dll")), "SetThreadDpiAwarenessContext"));
-            if (pfnsetthreaddpiawarenesscontext) //if this fails it will fall through to the next case and try SetProcessDpiAwareness
-            {
-                //DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 should be available in >= Win10 Creators Update
-                DPI_AWARENESS_CONTEXT dpicontext = pfnsetthreaddpiawarenesscontext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-                if (dpicontext == NULL) //failed try DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE
-                {
-                    pfnsetthreaddpiawarenesscontext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE);
-                }
-            }
             //determine which Win10 version
-            HMODULE lib = GetModuleHandle(_T("kernel32.dll"));
+            HMODULE lib = GetModuleHandle(TEXT("kernel32.dll"));
+            WUIF::ThrowIfFalse(lib);
             //check for Win10 1709 Fall Creators Update
             using PFN_GET_USER_DEFAULT_GEO_NAME = int(WINAPI*)(LPWSTR, int);
             PFN_GET_USER_DEFAULT_GEO_NAME pfngetuserdefaultgeoname = reinterpret_cast<PFN_GET_USER_DEFAULT_GEO_NAME>(GetProcAddress(lib, "GetUserDefaultGeoName"));
             if (pfngetuserdefaultgeoname)
             {
-                WUIF::DebugPrint(_T("Windows 10 OS version is %d"), 1709);
-                return WUIF::OSVersion::WIN10_1709;
+                WUIF::DebugPrint(TEXT("Windows 10 OS version is %i"), 1709);
+                osver = WUIF::OSVersion::WIN10_1709;
             }
-            //check for Win10 1703 Creators Update
-            using PFN_MAP_VIEW_OF_FILE2 = void(*)(HANDLE, HANDLE, ULONG64, PVOID, SIZE_T, ULONG, ULONG);
-            PFN_MAP_VIEW_OF_FILE2 pfnmapviewoffile2 = reinterpret_cast<PFN_MAP_VIEW_OF_FILE2>(GetProcAddress(lib, "MapViewOfFile2"));
-            if (pfnmapviewoffile2)
+            else
             {
-                WUIF::DebugPrint(_T("Windows 10 OS version is %d"), 1703);
-                return WUIF::OSVersion::WIN10_1703;
+                //check for Win10 1703 Creators Update
+                using PFN_MAP_VIEW_OF_FILE2 = void(*)(HANDLE, HANDLE, ULONG64, PVOID, SIZE_T, ULONG, ULONG);
+                PFN_MAP_VIEW_OF_FILE2 pfnmapviewoffile2 = reinterpret_cast<PFN_MAP_VIEW_OF_FILE2>(GetProcAddress(lib, "MapViewOfFile2"));
+                if (pfnmapviewoffile2)
+                {
+                    WUIF::DebugPrint(TEXT("Windows 10 OS version is %i"), 1703);
+                    osver = WUIF::OSVersion::WIN10_1703;
+                }
+                else
+                {
+                    //check for Win10 1607 Anniversary Update
+                    using PFN_SET_THREAD_DESCRIPTION = HRESULT(WINAPI*)(HANDLE, PCWSTR);
+                    PFN_SET_THREAD_DESCRIPTION pfnsetthreaddescription = reinterpret_cast<PFN_SET_THREAD_DESCRIPTION>(GetProcAddress(lib, "SetThreadDescription"));
+                    if (pfnsetthreaddescription)
+                    {
+                        WUIF::DebugPrint(TEXT("Windows 10 OS version is %i"), 1607);
+                        osver = WUIF::OSVersion::WIN10_1607;
+                    }
+                    else
+                    {
+                        //check for Win10 1511 November Update
+                        using PFN_IS_WOW64_PROCESS2 = BOOL(WINAPI*)(HANDLE, USHORT, USHORT);
+                        PFN_IS_WOW64_PROCESS2 pfniswow64process2 = reinterpret_cast<PFN_IS_WOW64_PROCESS2>(GetProcAddress(lib, "IsWow64Process2"));
+                        if (pfniswow64process2)
+                        {
+                            WUIF::DebugPrint(TEXT("Windows 10 OS version is %i"), 1511);
+                            osver = WUIF::OSVersion::WIN10_1511;
+                        }
+                        else
+                        {
+                            WUIF::DebugPrint(TEXT("Windows 10 OS version is initial release"));
+                            osver = WUIF::OSVersion::WIN10;
+                        }
+                    }
+                }
             }
-            //check for Win10 1607 Anniversary Update
-            using PFN_SET_THREAD_DESCRIPTION = HRESULT(WINAPI*)(HANDLE, PCWSTR);
-            PFN_SET_THREAD_DESCRIPTION pfnsetthreaddescription = reinterpret_cast<PFN_SET_THREAD_DESCRIPTION>(GetProcAddress(lib, "SetThreadDescription"));
-            if (pfnsetthreaddescription)
-            {
-                WUIF::DebugPrint(_T("Windows 10 OS version is %d"), 1607);
-                return WUIF::OSVersion::WIN10_1607;
-            }
-            //check for Win10 1511 November Update
-            using PFN_IS_WOW64_PROCESS2 = BOOL(WINAPI*)(HANDLE, USHORT, USHORT);
-            PFN_IS_WOW64_PROCESS2 pfniswow64process2 = reinterpret_cast<PFN_IS_WOW64_PROCESS2>(GetProcAddress(lib, "IsWow64Process2"));
-            if (pfniswow64process2)
-            {
-                WUIF::DebugPrint(_T("Windows 10 OS version is %d"), 1511);
-                return WUIF::OSVersion::WIN10_1511;
-            }
-            WUIF::DebugPrint(_T("Windows 10 OS version is initial release"));
-            return WUIF::OSVersion::WIN10;
         }
         else
         {
-            //Use D3D12 only = ((WUIF::App::GFXflags & WUIF::FLAGS::D3D12) && (!(WUIF::App::GFXflags & WUIF::FLAGS::D3D11)))
-            if ((WUIF::App::GFXflags & WUIF::FLAGS::D3D12) && (!(WUIF::App::GFXflags & WUIF::FLAGS::D3D11)))
+            if (D3D12ONLY)
             {
                 //if we are D3D12 only and not on Win 10 must throw an error
                 SetLastError(WE_D3D12_NOT_FOUND);
-                throw WUIF::WUIF_exception(_T("This application requires Direct3D 12, D3D12.dll not found!"));
+                throw WUIF::WUIF_exception(TEXT("This application requires Direct3D 12, D3D12.dll not found!"));
             }
-            WUIF::FLAGS::GFX_Flags t_flag = WUIF::App::GFXflags & (~WUIF::FLAGS::D3D12);
-            changeconst(&const_cast<WUIF::FLAGS::GFX_Flags&>(WUIF::App::GFXflags), &t_flag);
-
-            HINSTANCE shcorelib = LoadLibrary(_T("shcore.dll"));
-            if (shcorelib)
+            /*Remove D3D12 flag if set, as D3D12 isn't available.
+            Quicker to call changeconst than do a if (d3d12 set) type of expression*/
+            const WUIF::FLAGS::GFX_Flags flagtempval = (WUIF::App::GFXflags & (~WUIF::FLAGS::D3D12));
+            WUIF::changeconst(&const_cast<WUIF::FLAGS::GFX_Flags&>(WUIF::App::GFXflags), &flagtempval);
+            //check for Win 8.1
+            HMODULE lib = GetModuleHandle(TEXT("kernel32.dll"));
+            WUIF::ThrowIfFalse(lib);
+            using PFN_QUERY_PROTECTED_POLICY = BOOL(WINAPI*)(LPCGUID, PULONG_PTR);
+            PFN_QUERY_PROTECTED_POLICY pfnqueryprotectedpolicy = reinterpret_cast<PFN_QUERY_PROTECTED_POLICY>(GetProcAddress(lib, "QueryProtectedPolicy"));
+            if (pfnqueryprotectedpolicy)
             {
-                //set dpi awareness for Win8.1
-                using PFN_SET_PROCESS_DPI_AWARENESS = HRESULT(WINAPI*)(PROCESS_DPI_AWARENESS);
-                PFN_SET_PROCESS_DPI_AWARENESS pfnsetprocessdpiawareness = reinterpret_cast<PFN_SET_PROCESS_DPI_AWARENESS>(GetProcAddress(shcorelib, "SetProcessDpiAwareness"));
-                if (pfnsetprocessdpiawareness)
+                WUIF::DebugPrint(TEXT("Windows 8.1 detected"));
+                osver = WUIF::OSVersion::WIN8_1;
+            }
+            else
+            {
+                //check for Win 8
+                using PFN_CREATE_FILE2 = HANDLE(WINAPI*)(REFIID, void**);
+                PFN_CREATE_FILE2 pfncreatefile2 = reinterpret_cast<PFN_CREATE_FILE2>(GetProcAddress(lib, "CreateFile2"));
+                if (pfncreatefile2)
                 {
-                    pfnsetprocessdpiawareness(PROCESS_PER_MONITOR_DPI_AWARE); //this will fail if it's in the manifest
-                    FreeLibrary(shcorelib);
-                    WUIF::DebugPrint(_T("Windows 8.1 detected"));
-                    return WUIF::OSVersion::WIN8_1;
+                    WUIF::DebugPrint(TEXT("Windows 8 detected"));
+                    osver = WUIF::OSVersion::WIN8;
                 }
-                FreeLibrary(shcorelib);
-                shcorelib = NULL;
-            }
-            //use Vista/Win7/Win8 SetProcessDPIAware - this isn't guaranteed to be in later operating systems so we shouldn't link statically
-            using PFN_SET_PROCESS_DPI_AWARE = BOOL(WINAPI*)(void);
-            PFN_SET_PROCESS_DPI_AWARE pfnsetprocessdpiaware = reinterpret_cast<PFN_SET_PROCESS_DPI_AWARE>(GetProcAddress(GetModuleHandle(_T("user32.dll")), "SetProcessDPIAware"));
-            if (pfnsetprocessdpiaware)
-            {
-                pfnsetprocessdpiaware();
-            }
-            //check for Win 8
-            using PFN_CREATE_FILE2 = HANDLE(WINAPI*)(REFIID, void**);
-            PFN_CREATE_FILE2 pfncreatefile2 = reinterpret_cast<PFN_CREATE_FILE2>(GetProcAddress(GetModuleHandle(_T("kernel32.dll")), "CreateFile2"));
-            if (pfncreatefile2)
-            {
-                WUIF::DebugPrint(_T("Windows 8 detected"));
-                return WUIF::OSVersion::WIN8;
+                else
+                {
+                    WUIF::DebugPrint(TEXT("Windows version detected 7"));
+                    osver = WUIF::OSVersion::WIN7;
+                }
             }
         }
-        WUIF::DebugPrint(_T("Windows version detected 7"));
-        return WUIF::OSVersion::WIN7;
+        WUIF::changeconst(&const_cast<WUIF::OSVersion&>(WUIF::App::winversion), &osver);
+        return;
         #ifdef _MSC_VER
         #pragma warning(pop)
         #endif
     } //end OSCheck
 
+    /*void SetDPIAwareness()
+    Sets the DPI Awareness by the proper method for the OS Version. Attempts to set the highest
+    dpi awareness. If it fails it attempts lower dpi awareness until all fail. If all fail, dpi
+    awareness will be default DPI_UNAWARE. Sets App::processdpiawareness and
+    App::processdpiawarenesscontext (will be nullptr if not Win10 or supported). Using a manifest
+    to set DPI awareness will supersede this function.*/
+    #ifdef _MSC_VER
+    #pragma warning(push)
+    //GetModuleHandle could return NULL - tested via ThowIfFalse
+    #pragma warning(disable: 6387)
+    //dereferencing NULL pointer pfn*
+    #pragma warning(disable: 6011)
+    #endif
+    void SetDPIAwareness()
+    {
+        HINSTANCE shcorelib = nullptr;
+        //set the dpi awareness for Win10 1703 (Creators Update) or greater
+        if (WUIF::App::winversion >= WUIF::OSVersion::WIN10_1703)
+        {
+            HMODULE lib = GetModuleHandle(TEXT("user32.dll"));
+            WUIF::ThrowIfFalse(lib);
+            using PFN_IS_VALID_DPI_AWARENESS_CONTEXT = BOOL(WINAPI*)(DPI_AWARENESS_CONTEXT);
+            PFN_IS_VALID_DPI_AWARENESS_CONTEXT pfnisvaliddpiawarenesscontext = reinterpret_cast<PFN_IS_VALID_DPI_AWARENESS_CONTEXT>(GetProcAddress(lib, "IsValidDpiAwarenessContext"));
+            WUIF::ThrowIfFalse(pfnisvaliddpiawarenesscontext);
+            //DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 should be available in >= Win10 Creators Update
+            if (pfnisvaliddpiawarenesscontext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2))
+            {
+                using PFN_SET_PROCESS_DPI_AWARENESS_CONTEXT = BOOL(WINAPI*)(DPI_AWARENESS_CONTEXT);
+                PFN_SET_PROCESS_DPI_AWARENESS_CONTEXT pfnsetprocessdpiawarenesscontext = reinterpret_cast<PFN_SET_PROCESS_DPI_AWARENESS_CONTEXT>(GetProcAddress(lib, "SetProcessDpiAwarenessContext"));
+                WUIF::ThrowIfFalse(pfnsetprocessdpiawarenesscontext);
+                if (pfnsetprocessdpiawarenesscontext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2))
+                {
+                    _processdpiawareness        = PROCESS_PER_MONITOR_DPI_AWARE;
+                    _processdpiawarenesscontext = DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2;
+                    void *val = &_processdpiawareness;
+                    WUIF::changeconst(&const_cast<PROCESS_DPI_AWARENESS*&>(WUIF::App::processdpiawareness), &val);
+                    val = &_processdpiawarenesscontext;
+                    WUIF::changeconst(&const_cast<DPI_AWARENESS_CONTEXT*&>(WUIF::App::processdpiawarenesscontext), &val);
+                    WUIF::DebugPrint(TEXT("SetProcessDpiAwarenessContext used with DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2"), _processdpiawarenesscontext);
+                }
+                else
+                {
+                    const DWORD err = GetLastError();
+                    WUIF::DebugPrint(TEXT("SetProcessDpiAwarenessContext failed with %u"), err);
+                    goto getprocessawareness;
+                }
+            }
+        }
+        else
+        {
+            if (WUIF::App::winversion >= WUIF::OSVersion::WIN8_1)
+            {
+                shcorelib = LoadLibrary(TEXT("shcore.dll"));
+                WUIF::ThrowIfFalse(shcorelib);
+                //set dpi awareness for Win8.1
+                using PFN_SET_PROCESS_DPI_AWARENESS = HRESULT(WINAPI*)(PROCESS_DPI_AWARENESS);
+                PFN_SET_PROCESS_DPI_AWARENESS pfnsetprocessdpiawareness = reinterpret_cast<PFN_SET_PROCESS_DPI_AWARENESS>(GetProcAddress(shcorelib, "SetProcessDpiAwareness"));
+                WUIF::ThrowIfFalse(pfnsetprocessdpiawareness);
+                HRESULT hr = pfnsetprocessdpiawareness(PROCESS_PER_MONITOR_DPI_AWARE);
+                if (hr == S_OK)
+                {
+                    _processdpiawareness = PROCESS_PER_MONITOR_DPI_AWARE;
+                    void * val = &_processdpiawareness;
+                    WUIF::changeconst(&const_cast<PROCESS_DPI_AWARENESS*&>(WUIF::App::processdpiawareness), &val);
+                    WUIF::DebugPrint(TEXT("SetProcessDpiAwareness used with PROCESS_PER_MONITOR_DPI_AWARE"));
+                }
+                else
+                {
+                    WUIF::DebugPrint(TEXT("SetProcessDpiAwareness failed with %d"), hr);
+                    //Query the current process context by calling GetProcessDpiAwareness
+                getprocessawareness:
+                    if (!shcorelib)
+                    {
+                        shcorelib = LoadLibrary(TEXT("shcore.dll"));
+                    }
+                    using PFN_GET_PROCESS_DPI_AWARENESS = HRESULT(WINAPI*)(HANDLE, PROCESS_DPI_AWARENESS*);
+                    PFN_GET_PROCESS_DPI_AWARENESS pfngetprocessdpiawareness = reinterpret_cast<PFN_GET_PROCESS_DPI_AWARENESS>(GetProcAddress(shcorelib, "GetProcessDpiAwareness"));
+                    WUIF::ThrowIfFalse(pfngetprocessdpiawareness);
+                    hr = pfngetprocessdpiawareness(NULL, &_processdpiawareness);
+                    if (hr == S_OK)
+                    {
+                        void * val = &_processdpiawareness;
+                        WUIF::changeconst(&const_cast<PROCESS_DPI_AWARENESS*&>(WUIF::App::processdpiawareness), &val);
+                        WUIF::DebugPrint(TEXT("GetProcessDpiAwareness reports PROCESS_DPI_AWARENESS is %i"), _processdpiawareness);
+                    }
+                    else
+                    {
+                        WUIF::DebugPrint(TEXT("Unable to get current DPI Awareness."));
+                    }
+                }
+                FreeLibrary(shcorelib);
+            }
+            else
+            {
+                /*use Vista/Win7/Win8 SetProcessDPIAware and IsProcessDPIAware - these are not
+                guaranteed to be in later operating systems so we shouldn't link statically*/
+                using PFN_SET_PROCESS_DPI_AWARE = BOOL(WINAPI*)(void);
+                PFN_SET_PROCESS_DPI_AWARE pfnsetprocessdpiaware = reinterpret_cast<PFN_SET_PROCESS_DPI_AWARE>(GetProcAddress(GetModuleHandle(TEXT("user32.dll")), "SetProcessDPIAware"));
+                WUIF::ThrowIfFalse(pfnsetprocessdpiaware);
+                if (pfnsetprocessdpiaware())
+                {
+                    WUIF::DebugPrint(TEXT("SetProcessDPIAware succeeded"));
+                    _processdpiawareness = PROCESS_SYSTEM_DPI_AWARE;
+                    void * val = &_processdpiawareness;
+                    WUIF::changeconst(&const_cast<PROCESS_DPI_AWARENESS*&>(WUIF::App::processdpiawareness), &val);
+                }
+                else
+                {
+                    WUIF::DebugPrint(TEXT("SetProcessDPIAware failed"));
+                    //retrieve is dpi aware and store
+                    using PFN_IS_PROCESS_DPI_AWARE = BOOL(WINAPI*)(void);
+                    PFN_IS_PROCESS_DPI_AWARE pfnisprocessdpiaware = reinterpret_cast<PFN_IS_PROCESS_DPI_AWARE>(GetProcAddress(GetModuleHandle(TEXT("user32.dll")), "IsProcessDPIAware"));
+                    WUIF::ThrowIfFalse(pfnisprocessdpiaware);
+                    if (pfnisprocessdpiaware())
+                    {
+                        WUIF::DebugPrint(TEXT("Process is DPI Aware already"));
+                        _processdpiawareness = PROCESS_SYSTEM_DPI_AWARE;
+                        void * val = &_processdpiawareness;
+                        WUIF::changeconst(&const_cast<PROCESS_DPI_AWARENESS*&>(WUIF::App::processdpiawareness), &val);
+                    }
+                    else
+                    {
+                        WUIF::DebugPrint(TEXT("Process is not DPI Aware already"));
+                        _processdpiawareness = PROCESS_DPI_UNAWARE;
+                        void * val = &_processdpiawareness;
+                        WUIF::changeconst(&const_cast<PROCESS_DPI_AWARENESS*&>(WUIF::App::processdpiawareness), &val);
+                    }
+                }
+
+            }
+        }
+        return;
+    #ifdef _MSC_VER
+    #pragma warning(pop)
+    #endif
+    }
+
+    /*void InitResources()
+    This function initializes the requested global graphics resources
+    */
     void InitResources()
     {
-        WUIF::DebugPrint(_T("Initializing Resources"));
+        WUIF::DebugPrint(TEXT("Initializing Resources"));
+        //call GetDXGIAdapterandFactory as we do not know if the graphics card is D3D11 or 12 capable
         WUIF::DXGIResources::GetDXGIAdapterandFactory();
         if (WUIF::App::GFXflags & WUIF::FLAGS::D3D12)
         {
+            WUIF::DebugPrint(TEXT("Using D3D12"));
             //create D3D12 device
-            WUIF::D3D12Resources::CreateStaticResources();
-            WUIF::DebugPrint(_T("Using D3D12 = True"));
+            WUIF::D3D12Resources::CreateD3D12StaticResources();
         }
         if (WUIF::App::GFXflags & WUIF::FLAGS::D3D11)
         {
+            WUIF::DebugPrint(TEXT("Using D3D11"));
             //create D3D11 device
-            WUIF::D3D11Resources::CreateStaticResources();
-            WUIF::DebugPrint(_T("Using D3D11 = True"));
+            WUIF::D3D11Resources::CreateD3D11StaticResources();
         }
         if (WUIF::App::GFXflags & WUIF::FLAGS::D2D)
         {
             //Initialize the Windows Imaging Component (WIC) Factory
-            #ifdef _DEBUG
-            ThrowIfFailed(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED));
-            #else
             WUIF::ThrowIfFailed(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED));
-            #endif _DEBUG
-            WUIF::D2DResources::CreateStaticResources();
+            WUIF::D2DResources::CreateD2DStaticResources();
         }
         return;
     } //end InitResources
 
+
+    /*void ReleaseResources()
+    Releases all global graphics resources prior to exiting application
+    */
     void ReleaseResources()
     {
         if (WUIF::App::libD3D12)
         {
             FreeLibrary(WUIF::App::libD3D12);
         }
+        WINVECLOCK
         if (!WUIF::App::Windows.empty()) //Windows is empty if all windows have been closed
         {
-            for (std::forward_list<WUIF::Window*>::iterator i = WUIF::App::Windows.begin();
-                    i != WUIF::App::Windows.end();
-                    ++i)
+            for (std::vector<WUIF::Window*>::reverse_iterator i = WUIF::App::Windows.rbegin();
+                i != WUIF::App::Windows.rend(); i = WUIF::App::Windows.rbegin())
             {
-                delete static_cast<WUIF::Window*>(*i);
+                if (static_cast<WUIF::Window*>(*i)->isInitialized())
+                {
+                    WINVECUNLOCK
+                    DestroyWindow(static_cast<WUIF::Window*>(*i)->hWnd);
+                }
+                else
+                {
+                    WINVECUNLOCK
+                    delete static_cast<WUIF::Window*>(*i);
+                }
+                guard.lock();
+                WUIF::App::vecready.wait(guard, WUIF::App::is_vecwritable);
+                WUIF::App::vecwrite = false;
+                //reload the iterator as delete will change the vector
                 if (WUIF::App::Windows.empty())
                     break;
             }
         }
+        WINVECUNLOCK
+
         //release all static resources
         WUIF::D2DResources::d2dDevice.Reset();
         WUIF::D2DResources::wicFactory.Reset();
@@ -629,20 +836,28 @@ namespace {
     }
 }
 
+
+/*int APIENTRY wWinMain
+Main entry point for application. Two prototypes exist - one for UNICODE and one for ASCII/MBCS
+versions of the application. IFDEF will set appropriate prototype.
+*/
 #ifdef _UNICODE
-int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR lpCmdLine, _In_ int nCmdShow)
+int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance,
+    _In_ LPWSTR lpCmdLine, _In_ int nCmdShow)
 #else
-int APIENTRY WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPSTR lpCmdLine, _In_ int nCmdShow)
+int APIENTRY  WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance,
+    _In_ LPSTR  lpCmdLine, _In_ int nCmdShow)
 #endif
 {
     UNREFERENCED_PARAMETER(hPrevInstance);
 
     #ifdef _UNICODE
-    WUIF::DebugPrint(_T("Application Start - Unicode enabled"));
+    WUIF::DebugPrint(TEXT("Application Start - Unicode build"));
     #else
-    WUIF::DebugPrint(_T("Application Start - ANSI enabled"));
+    WUIF::DebugPrint(TEXT("Application Start - MBCS build"));
     #endif
 
+    #ifdef _MSC_VER
     /*Retrieves or modifies the state of the _crtDbgFlag flag to control the allocation behavior of
     the debug heap manager (debug version only)*/
     //get current bits
@@ -651,56 +866,45 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance,
     tmp = (tmp & 0x0000FFFF) | _CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF | _CRTDBG_CHECK_ALWAYS_DF;
     //set the bits
     _CrtSetDbgFlag(tmp);
+    //ensure crt memory dump is output to the debug window
     _CrtSetReportMode(_CRT_ERROR, _CRTDBG_MODE_DEBUG);
+    #endif
 
     /*Best practice is that all applications call the process-wide SetErrorMode function with a
     parameter of SEM_FAILCRITICALERRORS at startup. This is to prevent error mode dialogs from
     hanging the application.*/
     SetErrorMode(SEM_FAILCRITICALERRORS);
+    SetLastError(WE_OK);
 
     int retcode = 0;
     try
     {
-        #ifdef _DEBUG
-        WUIF::FLAGS::GFX_Flags tempflag = 0;
-        if (WUIF::flagexpr & 1u << (1 - 1))
+        //throw if GFXflags is zero
+        if (!(WUIF::flagexpr))
         {
-            tempflag |= WUIF::FLAGS::WARP;
-        }
-        if (WUIF::flagexpr & 1u << (2 - 1))
-        {
-            tempflag |= WUIF::FLAGS::D2D;
-        }
-        if (WUIF::flagexpr & 1u << (3 - 1))
-        {
-            tempflag |= WUIF::FLAGS::D3D11;
-        }
-        if (WUIF::flagexpr & 1u << (4 - 1))
-        {
-            tempflag |= WUIF::FLAGS::D3D12;
-        }
-        changeconst(&const_cast<WUIF::FLAGS::GFX_Flags&>(WUIF::App::GFXflags), &tempflag);
-        #else
-        changeconst(&const_cast<WUIF::FLAGS::GFX_Flags&>(WUIF::App::GFXflags), &const_cast<unsigned int&>(WUIF::flagexpr));
-        #endif
-        //assert if GFXflags is zero
-        _ASSERTE(WUIF::App::GFXflags);
-        //ensure either D3D11 or D3D12 is declared for use - if neither is set assert
-        _ASSERTE(WUIF::App::GFXflags & (WUIF::FLAGS::D3D11 | WUIF::FLAGS::D3D12));
-        changeconst(&const_cast<HINSTANCE&>(WUIF::App::hInstance), &hInstance);
-        changeconst(&const_cast<LPTSTR&>(WUIF::App::lpCmdLine), &lpCmdLine);
-        changeconst(&const_cast<int&>(WUIF::App::nCmdShow), &nCmdShow);
-        WUIF::OSVersion osv = OSCheck();
-        changeconst(&const_cast<WUIF::OSVersion&>(WUIF::App::winversion), &osv);
 
-        WUIF::App::mainWindow = DBG_NEW WUIF::Window();
-        //set the cmdshow variable to the nCmdShow passed into the application
-        WUIF::App::mainWindow->property.cmdshow(nCmdShow);
-        //create application
-        #pragma warning(suppress: 26409) //avoid calling new and delete explicitly
-        //WUIF::App = DBG_NEW WUIF::Application(hInstance, lpCmdLine, nCmdShow, OSCheck());
+            SetLastError(WE_CRITFAIL);
+            throw WUIF::WUIF_exception(TEXT("Developer did not set WUIF::App:GFXflags to a value!"));
+        }
+        //ensure either D3D11 or D3D12 is declared for use - if neither is set throw
+        if (!(WUIF::flagexpr & (WUIF::FLAGS::D3D11 | WUIF::FLAGS::D3D12)))
+        {
+            SetLastError(WE_CRITFAIL);
+            throw WUIF::WUIF_exception(TEXT("Developer did not set a flag indicating which Direct3D version to use!"));
+        }
+        WUIF::changeconst(&const_cast<WUIF::FLAGS::GFX_Flags&>(WUIF::App::GFXflags), &WUIF::flagexpr);
+        OSCheck();
+        SetDPIAwareness();
+        WUIF::changeconst(&const_cast<HINSTANCE&>(WUIF::App::hInstance), &hInstance);
+        WUIF::changeconst(&const_cast<LPTSTR&>(WUIF::App::lpCmdLine), &lpCmdLine);
+        WUIF::changeconst(&const_cast<int&>(WUIF::App::nCmdShow), &nCmdShow);
 
         InitResources();
+
+        WUIF::App::mainWindow = CRT_NEW WUIF::Window();
+        //set the cmdshow variable to the nCmdShow passed into the application
+        WUIF::App::mainWindow->cmdshow(nCmdShow);
+        //create application
 
         /*argc - An integer that contains the count of arguments that follow in argv. The argc
             parameter is always greater than or equal to 1.
@@ -711,6 +915,9 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance,
         int    argc  = 0;
         LPSTR *argv  = CommandLineToArgvA(GetCommandLineA(), &argc);
 
+        #ifdef DEBUGOUTPUT
+        //send to debug output contents of argc and argv
+        //this is a special case and it doesn't fit WUIF::DebugPrint as elsewhere
         char t[24] = "argv has   arguments\r\n\0";
         t[9] = static_cast<char>('0' + (argc-1));
         OutputDebugStringA(t);
@@ -722,19 +929,23 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance,
             OutputDebugStringA(argv[i]);
             OutputDebugStringA("\r\n\0");
         }
-        WUIF::DebugPrint(_T("Executing 'main'"));
+        #endif
+        WUIF::DebugPrint(TEXT("Executing 'main'"));
+
         //call the application entry point and pass argc and argv
         retcode = main(argc, argv);
-        OutputDebugString(_T("\r\n\0"));//add a newline just in case other output messages before haven't
-        WUIF::DebugPrint(_T("Exited 'main'"));
-        //free memory allocate to argv in CommandLineToArgvA
+
+        //add a newline just in case other output messages before haven't
+        OutputDebugString(TEXT(""));
+        WUIF::DebugPrint(TEXT("Exited 'main'"));
+        //free memory allocated to argv in CommandLineToArgvA
         HeapFree(GetProcessHeap(), NULL, argv);
-        WUIF::DebugPrint(_T("Releasing resources"));
-        ReleaseResources();
+        WUIF::DebugPrint(TEXT("Releasing resources"));
+        ::ReleaseResources();
     }
     catch (const WUIF::WUIF_exception &e)
     {
-        WUIF::DebugPrint(_T("WUIF exception encountered"));
+        WUIF::DebugPrint(TEXT("WUIF exception encountered"));
         retcode = ERROR_PROCESS_ABORTED;
         try
         {
@@ -743,14 +954,14 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance,
                 try { WUIF::App::ExceptionHandler(); }
                 catch (...) { }
             }
-            ReleaseResources();
+            ::ReleaseResources();
             ErrorExit(e.WUIFWhat());
         }
         catch (...) { }
     }
     catch (const WUIF_WNDPROC_terminate_exception)
     {
-        WUIF::DebugPrint(_T("WUIF_WNDPROC_terminate exception encountered"));
+        WUIF::DebugPrint(TEXT("WUIF_WNDPROC_terminate exception encountered"));
         retcode = ERROR_PROCESS_ABORTED;
         try {
             if (WUIF::App::ExceptionHandler != nullptr)
@@ -758,14 +969,14 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance,
                 try { WUIF::App::ExceptionHandler(); }
                 catch (...) {}
             }
-            ReleaseResources();
+            ::ReleaseResources();
             //ErrorExit already called
         }
         catch (...) {}
     }
     catch (...) //catch all other unhandled exceptions
     {
-        WUIF::DebugPrint(_T("exception encountered"));
+        WUIF::DebugPrint(TEXT("exception encountered"));
         retcode = ERROR_PROCESS_ABORTED;
         try {
             if (WUIF::App::ExceptionHandler != nullptr)
@@ -773,26 +984,38 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance,
                 try { WUIF::App::ExceptionHandler(); }
                 catch (...) {}
             }
-            ReleaseResources();
-            ErrorExit(_T("Critical Unhandled Exception!"));
+            ::ReleaseResources();
+            ErrorExit(TEXT("Critical Unhandled Exception!"));
         }
         catch (...) {}
     }
-    WUIF::DebugPrint(_T("Terminating Applicaiton"));
+    WUIF::DebugPrint(TEXT("Terminating Applicaiton"));
     return retcode;
 }
 
+/*int WUIF::Run(_In_opt_ int accelresource)
+Main loop for the application
 
+int accelresource - acceleration resources
+
+Return value
+int
+   Returns a success failure code from msg.wParam
+*/
 int WUIF::Run(_In_opt_ int accelresource)
 {
     //display the main window and any currently defined windows
     App::mainWindow->DisplayWindow();
-    for (std::forward_list<Window*>::iterator i = App::Windows.begin(); i != App::Windows.end(); ++i)
     {
-        if (*i != App::mainWindow)
+        WINVECLOCK
+        for (std::vector<Window*>::iterator i = App::Windows.begin(); i != App::Windows.end(); ++i)
         {
-            static_cast<Window*>(*i)->DisplayWindow();
+            if (*i != App::mainWindow)
+            {
+                static_cast<Window*>(*i)->DisplayWindow();
+            }
         }
+        WINVECUNLOCK
     }
     HACCEL hAccelTable = nullptr;
     if (accelresource)
@@ -814,11 +1037,17 @@ int WUIF::Run(_In_opt_ int accelresource)
         }
         else
         {
+            //update the scene
+            //renderer->Update();
+            //render frames during idle time
+            //renderer->Render();
+            //present the frame to the screen
             App::mainWindow->Present();
         }
     }
     if (msg.wParam == WE_WNDPROC_EXCEPTION)
     {
+        SetLastError(WE_WNDPROC_EXCEPTION);
         throw WUIF_WNDPROC_terminate_exception{};
     }
     return static_cast<int>(msg.wParam);

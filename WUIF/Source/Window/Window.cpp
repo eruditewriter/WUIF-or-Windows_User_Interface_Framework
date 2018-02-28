@@ -14,179 +14,303 @@ limitations under the License.*/
 #include "stdafx.h"
 #include <string> //needed for int to string conversion
 #include <ShellScalingApi.h> //needed for PROCESS_DPI_AWARENESS, PROCESS_PER_MONITOR_DPI_AWARE, MONITOR_DPI_TYPE, MDT_EFFECTIVE_DPI
-#include "WUIF_Main.h"
-#include "WUIF_Error.h"
 #include "Application\Application.h"
 #include "Window\Window.h"
 #include "Window\WndProcThunk.h"
 #include "GFX\GFX.h"
-#include "GFX\DXGI\DXGI.h"
-#include "GFX\D3D\D3D11.h"
-#include "GFX\D3D\D3D12.h"
-#include "GFX\D2D\D2D.h"
 
+HANDLE WUIF::wndprocThunk::heapaddr = NULL;
+long   WUIF::wndprocThunk::thunkInstances = 0;
 
-HANDLE WUIF::wndprocThunk::heapaddr          = NULL;
-long   WUIF::wndprocThunk::thunkInstances    = 0;
-
-namespace {
-    static long  numwininstances = 0;
+namespace{
+    //cumulative counting of number of windows created
+    static long numwininstances = 0;
 }
 
 namespace WUIF {
+    namespace App {
+        std::mutex veclock;
+        bool vecwrite = true;
+        std::condition_variable vecready;
+        //internal Window collection vector - not exposed publicly
+        std::vector<Window*> Windows;
+        /*Function to return a copy of the Window collection vector*/
+        inline const std::vector<Window*>& GetWindows()
+        {
+            return Windows;
+        }
 
-    Window::Window() :
-        GFX(nullptr),
-        wndclassatom(NULL),
-        property(this),
+        bool is_vecwritable()
+        {
+            return vecwrite;
+        }
+    }
+
+    Window::Window() : WindowProperties(this), GFXResources(this),
         hWnd(NULL),
         hWndParent(NULL),
         enableHDR(false),
-        thunk(nullptr),
+        _classatom(NULL),
+        cWndProc(NULL),
         instance(0),
-        initialized(false),
-        _fullscreen(false),
+        thunk(nullptr),
         standby(false)
     {
+        //initialize thunk
+        thunk = CRT_NEW wndprocThunk;
+        if (!thunk->Init(this, reinterpret_cast<DWORD_PTR>(_WndProc)))
+        {
+            delete thunk;
+            thunk = nullptr;
+            SetLastError(WE_CRITFAIL);
+            throw WUIF_exception(TEXT("WndProc thunk failed to initialize properly!"));
+        }
         //increment instance - use InterlockedIncrement to avoid any conflicts
         instance = InterlockedIncrement(&numwininstances);
-        GFX = DBG_NEW GFXResources(*this);
 
-        //register thunk
-        thunk = DBG_NEW wndprocThunk;
-        if (!(thunk->Init(this, (DWORD_PTR)_WndProc))) //get our thunk's address
-        {
-            throw WUIF_exception(_T("WndProc thunk failed to initialize properly!"));
-        }
-        App::Windows.push_front(this);
+        WINVECLOCK
+        App::Windows.push_back(this);
+        WINVECUNLOCK
     }
 
     Window::~Window()
     {
-        delete GFX;
-        GFX = nullptr;
-        delete thunk;
-        thunk = nullptr;
-        App::Windows.remove(this);
+        if (thunk != nullptr)
+        {
+            delete thunk;
+            thunk = nullptr;
+        }
+        int i = 0;
+        WINVECLOCK
+        for (std::vector<Window*>::iterator winlist = App::Windows.begin(); winlist != App::Windows.end(); winlist++)
+        {
+            if (*winlist == this)
+            {
+                App::Windows.erase(App::Windows.begin() + i);
+                break;
+            }
+            i++;
+        }
+        WINVECUNLOCK
+        if (_classatom)
+        {
+            if (!cWndProc)
+            {
+                //Before calling this function, an application must destroy all windows created with the specified class.
+                if (UnregisterClass(MAKEINTATOM(_classatom), App::hInstance))
+                {
+                    _classatom = NULL;
+                }
+            }
+        }
     }
 
+    void Window::classatom(_In_ const ATOM v)
+    {
+        if (!initialized)
+        {
+            _classatom = v;
+        }
+    }
+
+    /*inline WNDPROC Window::pWndProc()
+    inline function to return a pointer to the window's WndProc thunk or throw an exception
+    */
+    WNDPROC Window::pWndProc()
+    {
+        return (thunk ? thunk->GetThunkAddress() : throw WUIF_exception(TEXT("Invalid thunk pointer!")));
+    }
+
+    /*LRESULT CALLBACK App::T_SC_WindowProc(_In_ HWND hwnd, _In_ UINT uMsg, _In_ WPARAM wParam, _In_ LPARAM lParam)
+    This is a temporary WindowProc to assist with sub-classing. It will change the original window's 
+    class WndProc pointer to the window's thunk, which points to the default _WndProc. This must
+    happen in WM_NCCREATE. The *this is passed as lpCreateParams from the CreateWindowEx call in
+    DisplayWindow(). It's a static class function so we can keep pWndProc private*/
+    LRESULT CALLBACK Window::T_SC_WindowProc(_In_ HWND hwnd, _In_ UINT uMsg, _In_ WPARAM wParam, _In_ LPARAM lParam)
+    {
+        switch (uMsg)
+        {
+        case WM_NCCREATE:
+        {
+            //change the WndProc from the class to the Window thunk
+            SetWindowLongPtr(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(reinterpret_cast<WUIF::Window*>(reinterpret_cast<CREATESTRUCT*>(lParam)->lpCreateParams)->pWndProc()));
+            //now call the WM_NCCREATE function of _WndProc to finish
+            return SendMessage(hwnd, WM_NCCREATE, wParam, lParam);
+        }
+        break;
+        default:
+        {
+            return DefWindowProc(hwnd, uMsg, wParam, lParam);
+        }
+        }
+    }
+
+
+    /*void Window::DisplayWindow()
+    If the window is not initialized it will register the class and create the window and then
+    show this window
+    */
     void Window::DisplayWindow()
     {
-        //assign values to the WNDCLASSEX structure prior to calling RegisterClassEx
-        WNDCLASSEX wndclass = {};                                    //zero out
-        wndclass.cbSize = sizeof(WNDCLASSEX);
-        wndclass.style = property.classtyle();                     //Window Class Styles to be applied
-        wndclass.lpfnWndProc = pWndProc();                            //a pointer to the window procedure, here it is a pointer to wndprocThunk
-        wndclass.cbClsExtra = 0;							            //number of extra bytes to allocate following the window-class structure
-        wndclass.cbWndExtra = 0;							            //number of extra bytes to allocate following the window instance
-        wndclass.hInstance = App::hInstance;                       //handle to the instance that contains the window procedure for the class
-        wndclass.hIcon = property.icon();                          //handle to the class icon
-        wndclass.hCursor = property.cursor();	                    //handle to the class cursor
-        wndclass.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);                    //handle to the class background brush
-        wndclass.lpszMenuName = property.menuname();				        //pointer to a null-terminated character string that specifies the resource name of the class menu
-        #ifdef _UNICODE
-        std::wstring s = L"Window" + std::to_wstring(instance); //create a string for the class name. use Window and append the window instance (guaranteeing uniqueness)
-        #else
-        std::string s = "Window" + std::to_string(instance); //create a string for the class name. use Window and append the window instance (guaranteeing uniqueness)
-        #endif // _UNICODE
-        wndclass.lpszClassName = s.c_str();					            //pointer to a null-terminated string specifying the window class name - a generic default
-        wndclass.hIconSm = property.iconsm();					    //handle to a small icon that is associated with the window class
-
-                                                                //register our WNDCLASSEX (wndclass) for the window and store in our class atom variable. We use the class atom instead of the class name
-        wndclassatom = RegisterClassEx(&wndclass);
-        if (wndclassatom == 0) //failed
+        if (!initialized)
         {
-            throw WUIF_exception(_T("Unable to register window class!"));
-        }
-
-        //check if the window is requesting a different dpi thread context from the main (only in Win10)
-        //if it's different change the thread context prior to creating the window and then change back
-        DPI_AWARENESS_CONTEXT dpicontext = NULL;
-        HINSTANCE lib = NULL;
-        if (App::winversion >= OSVersion::WIN10)
-        {
-            lib = LoadLibrary(_T("user32.dll"));
-            if (lib)
+            //get the number of digits in 'instance'
+            int digits = 1;
+            int pten = 10;
+            while (pten <= instance) {
+                digits++;
+                pten *= 10;
+            }
+            if (!_classatom)
             {
-                using AREDPICONTEXTSEQUAL = BOOL(WINAPI*)(DPI_AWARENESS_CONTEXT, DPI_AWARENESS_CONTEXT);
-                AREDPICONTEXTSEQUAL aredpiawarenesscontextsequal = (AREDPICONTEXTSEQUAL)GetProcAddress(lib, "AreDpiAwarenessContextsEqual");
-                if (aredpiawarenesscontextsequal) //if this fails it will fall through to the next case and try SetProcessDpiAwareness
+                /*assign values to the WNDCLASSEX structure prior to calling RegisterClassEx
+                cbSize        - size, in bytes, of this structure. Set this member to sizeof(WNDCLASSEX)
+                style         - Window Class Styles to be applied - using CS_HREDRAW | CS_VREDRAW
+                lpfnWndProc   - a pointer to the window procedure, here it is a pointer to wndprocThunk
+                cbClsExtra    - number of extra bytes to allocate following the structure - not used
+                cbWndExtra    - number of extra bytes to allocate following the window instance - not used
+                hInstance     - handle to the instance that contains the window procedure for the class
+                hIcon         - handle to the class icon
+                hCursor       - handle to the class cursor
+                hbrBackground - handle to the class background brush - ignored but using default of
+                                    (HBRUSH)(COLOR_WINDOW + 1) - background handled by D3D or D2D
+                lpszMenuName  - pointer to a null-terminated character string that specifies the
+                                    resource name of the class menu - not used
+                lpszClassName - pointer to a null-terminated string specifying the window class name
+                hIconSm       - handle to a small icon that is associated with the window class
+                */
+
+                /*create a string for the class name. use 'W' and append the instance thus guaranteeing
+                uniqueness) [i.e. 'W1']*/
+                LPCTSTR pszFormat = TEXT("W%d");
+                LPTSTR classname = CRT_NEW TCHAR[digits + 2]; //+1 for 'W' and +1 for null terminator
+                /*write 'W + [character equivalent of instance number]' to classname; use
+                StringCchPrintf as the mechanism to convert instance to a character equivalent*/
+                ThrowIfFailed(StringCchPrintf(classname, digits + 2, pszFormat, instance));
+                WNDCLASSEX wndclass    = {}; //zero out
+                wndclass.lpszClassName = classname;
+                wndclass.cbSize        = sizeof(WNDCLASSEX);
+                wndclass.style         = CS_HREDRAW | CS_VREDRAW;
+                wndclass.lpfnWndProc   = pWndProc();
+                wndclass.hInstance     = App::hInstance;
+                wndclass.hIcon         = _icon;
+                wndclass.hCursor       = _classcursor;
+                wndclass.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+                wndclass.hIconSm       = _iconsm;
+
+                /*register our WNDCLASSEX (wndclass) for the window and store result in our class atom
+                variable. We will use the class atom instead of the class name*/
+                _classatom = RegisterClassEx(&wndclass);
+                delete[] classname;
+                if (_classatom == 0)
                 {
-                    using GETTHREADDPICONTEXT = DPI_AWARENESS_CONTEXT(WINAPI*)(void);
-                    GETTHREADDPICONTEXT getthreaddpiawarenesscontext = (GETTHREADDPICONTEXT)GetProcAddress(lib, "GetThreadDpiAwarenessContext");
-                    if (getthreaddpiawarenesscontext)
+                    //failed
+                    throw WUIF_exception(TEXT("Unable to register window class!"));
+                }
+            }
+            else
+            {
+                //class already registered, get the WndProc and subclass
+                WNDCLASSEX wndclass = {};
+                wndclass.cbSize = sizeof(WNDCLASSEX);
+                ThrowIfFalse(GetClassInfoEx(App::hInstance, MAKEINTATOM(_classatom), &wndclass));
+                if (wndclass.lpfnWndProc != Window::T_SC_WindowProc)
+                {
+                    //create a dummy window as we need an hwnd to change the class WndProc
+                    HWND tempwin = CreateWindowEx(NULL, MAKEINTATOM(_classatom), NULL, NULL, 0, 0, 0, 0, NULL, NULL, App::hInstance, NULL);
+                    if (tempwin)
                     {
-                        if (!(aredpiawarenesscontextsequal(getthreaddpiawarenesscontext(), property.dpiawareness())))
+                        if (SetClassLongPtr(tempwin, GCLP_WNDPROC, reinterpret_cast<LONG_PTR>(Window::T_SC_WindowProc)))
+                            cWndProc = wndclass.lpfnWndProc;
+                        DestroyWindow(tempwin);
+                    }
+                }
+                _icon        = wndclass.hIcon;
+                _iconsm      = wndclass.hIconSm;
+                _classcursor = wndclass.hCursor;
+            }
+
+            if (_windowname == nullptr)
+            {
+                //create a string for the window name. Use 'Window' and append the instance
+                LPCTSTR pszFormat2 = TEXT("Window%d");
+                _windowname = CRT_NEW TCHAR[digits + 7]; //+6 for 'Window' and +1 for null terminator
+                ThrowIfFailed(StringCchPrintf(_windowname, digits + 7, pszFormat2, instance));
+            }
+
+            /*Check if the window is requesting a different dpi thread context from the main (only
+            in Win10 1607). If it's different change the thread context prior to creating the
+            window and then change back*/
+            DPI_AWARENESS_CONTEXT dpicontext = NULL;
+            HMODULE lib = NULL;
+            using PFN_SET_THREAD_DPI_AWARENESS_CONTEXT = DPI_AWARENESS_CONTEXT(WINAPI*)(DPI_AWARENESS_CONTEXT);
+            PFN_SET_THREAD_DPI_AWARENESS_CONTEXT pfnsetthreaddpiawarenesscontext = nullptr;
+            if ((_threaddpiawarenesscontext != NULL) && (App::winversion >= OSVersion::WIN10_1607) && (hWndParent == NULL))
+            {
+                lib = GetModuleHandle(TEXT("user32.dll"));
+                if (lib)
+                {
+                    using PFN_ARE_DPI_AWARENESS_CONTEXTS_EQUAL = BOOL(WINAPI*)(DPI_AWARENESS_CONTEXT, DPI_AWARENESS_CONTEXT);
+                    PFN_ARE_DPI_AWARENESS_CONTEXTS_EQUAL pfnaredpiawarenesscontextsequal = (PFN_ARE_DPI_AWARENESS_CONTEXTS_EQUAL)GetProcAddress(lib, "AreDpiAwarenessContextsEqual");
+                    if (pfnaredpiawarenesscontextsequal)
+                    {
+                        using PFN_GET_THREAD_DPI_AWARENESS_CONTEXT = DPI_AWARENESS_CONTEXT(WINAPI*)(void);
+                        PFN_GET_THREAD_DPI_AWARENESS_CONTEXT pfngetthreaddpiawarenesscontext = (PFN_GET_THREAD_DPI_AWARENESS_CONTEXT)GetProcAddress(lib, "GetThreadDpiAwarenessContext");
+                        if (pfngetthreaddpiawarenesscontext)
                         {
-                            using SETTHREADDPIAWARE = DPI_AWARENESS_CONTEXT(WINAPI*)(DPI_AWARENESS_CONTEXT);
-                            SETTHREADDPIAWARE setthreaddpiaware = (SETTHREADDPIAWARE)GetProcAddress(lib, "SetThreadDpiAwarenessContext");
-                            if (setthreaddpiaware)
+                            if ((pfnaredpiawarenesscontextsequal(pfngetthreaddpiawarenesscontext(), _threaddpiawarenesscontext)) == TRUE)
                             {
-                                dpicontext = setthreaddpiaware(property.dpiawareness());
+                                pfnsetthreaddpiawarenesscontext = (PFN_SET_THREAD_DPI_AWARENESS_CONTEXT)GetProcAddress(lib, "SetThreadDpiAwarenessContext");
+                                if (pfnsetthreaddpiawarenesscontext)
+                                {
+                                    dpicontext = pfnsetthreaddpiawarenesscontext(_threaddpiawarenesscontext);
+                                }
                             }
                         }
                     }
                 }
             }
-        }
 
-        //NB: we store the window handle in the NCCREATE message of our WndProc
-        hWnd = CreateWindowEx(property.exstyle(), //extended window style
-            MAKEINTATOM(wndclassatom),         //null-terminated string created by a previous call to the RegisterClassEx function
-            property.windowname(),		           //the window name
-            property.style(),                     //the style of the window being created, make sure the WS_VISIBLE bit is off as we do not want the window to show yet
-            property.left(),			           //initial horizontal position of the window
-            property.top(),			           //initial vertical position of the window
-            property.width(),			           //width, in device units, of the window
-            property.height(),			           //height, in device units, of the window
-            hWndParent,		                   //handle to the parent or owner window of the window being created
-            property.menu(),			           //handle to a menu, or specifies a child-window identifier
-            App::hInstance,		               //handle to the instance of the module to be associated with the window
-            nullptr);                          //pointer to a value to be passed to the window through the CREATESTRUCT structure
-        if (hWnd == NULL)//pointer to a value to be passed to the window through the CREATESTRUCT structure
-        {
-            throw WUIF_exception(_T("Unable to create window"));
-        }
-        initialized = true; //window class is registered and window is "created"
-        if (dpicontext != NULL) //restore dpi thread context
-        {
-            using SETTHREADDPIAWARE = DPI_AWARENESS_CONTEXT(WINAPI*)(DPI_AWARENESS_CONTEXT);
-            SETTHREADDPIAWARE setthreaddpiaware = (SETTHREADDPIAWARE)GetProcAddress(lib, "SetThreadDpiAwarenessContext");
-            if (setthreaddpiaware)
+            //NB: we store the window handle in the NCCREATE message of our WndProc
+            hWnd = CreateWindowEx(_exstyle, //extended window style
+                MAKEINTATOM(_classatom),  //null-terminated string created by a previous call to the RegisterClassEx function
+                _windowname,	            //the window name
+                _style & (~WS_VISIBLE),     //the style of the window being created, make sure the WS_VISIBLE bit is off as we do not want the window to show yet
+                _left,			            //initial horizontal position of the window
+                _top,			            //initial vertical position of the window
+                _width,			            //width, in device units, of the window
+                _height,		            //height, in device units, of the window
+                hWndParent,		            //handle to the parent or owner window of the window being created
+                _menu,			            //handle to a menu, or specifies a child-window identifier
+                App::hInstance,	            //handle to the instance of the module to be associated with the window
+                reinterpret_cast<LPVOID>(this)); //pointer to a value to be passed to the window through the CREATESTRUCT structure
+            if (dpicontext != NULL) //restore dpi thread context
             {
-                setthreaddpiaware(dpicontext);
+                if (pfnsetthreaddpiawarenesscontext)
+                {
+                    pfnsetthreaddpiawarenesscontext(dpicontext);
+                }
             }
+            if (hWnd == NULL)
+            {
+                throw WUIF_exception(TEXT("Unable to create window"));
+            }
+            initialized = true; //window class is registered and window is "created"
+            ShowWindow(hWnd, _cmdshow); //show the window
+            UpdateWindow(hWnd); //now paint the window
         }
-        if (lib)
-        {
-            FreeLibrary(lib);
-        }
-        ShowWindow(hWnd, property.cmdshow()); //show the window
-        UpdateWindow(hWnd); //now paint the window
         return;
     }
 
-    WNDPROC Window::pWndProc() //returns a pointer to the window's WndProc thunk
-    {
-        return (thunk ? thunk->GetThunkAddress() : throw WUIF_exception(TEXT("Invalid thunk pointer!")));
-    };
-
-    WNDCLASSEX	Window::wndclass()
-    {
-        WNDCLASSEX winclass = {};
-        if ((GetClassInfoEx(App::hInstance, MAKEINTATOM(wndclassatom), &winclass)) != 0)
-        {
-            winclass = {};
-        }
-        return winclass;
-    }
-
-
     UINT Window::getWindowDPI()
     {
+        if (((App::processdpiawarenesscontext != nullptr) && (*App::processdpiawarenesscontext == DPI_AWARENESS_CONTEXT_UNAWARE)) || ((App::processdpiawareness != nullptr) && (*App::processdpiawareness == PROCESS_DPI_UNAWARE)))
+        {
+            return 96;
+        }
         if (App::winversion > OSVersion::WIN8_1)  //Windows 10 provides GetDpiForWindow, a per monitor DPI scaling
         {
-            HINSTANCE lib = LoadLibrary(_T("user32.dll"));
+            HMODULE lib = GetModuleHandle(TEXT("user32.dll"));
             if (lib)
             {
                 //Windows 10 uses GetDpiForWindow to get the dynamic DPI
@@ -196,16 +320,14 @@ namespace WUIF {
                 {
                     UINT dpi = getdpiforwindow(hWnd);
                     scaleFactor = MulDiv(dpi, 100, 96);
-                    FreeLibrary(lib);
                     return dpi;
                 }
-                FreeLibrary(lib);
             }
         }
         if (App::winversion > OSVersion::WIN8) //either not Win10 or GetDpiForWindow didn't load, try Win 8.1 function
         {
             //Windows 8.1 has the GetDpiForMonitor function
-            HINSTANCE lib = LoadLibrary(_T("shcore.dll"));
+            HINSTANCE lib = LoadLibrary(TEXT("shcore.dll"));
             if (lib)
             {
                 using GETDPIFORMONITOR = HRESULT(WINAPI *)(HMONITOR, MONITOR_DPI_TYPE, UINT*, UINT*);
@@ -250,24 +372,24 @@ namespace WUIF {
             _fullscreen = false;
             //if already fullscreen we are leaving fullscreen
             //switching full screen state will override our position variables - so store
-            int width = property._prevwidth;
-            int height = property._prevheight;
-            int left = property._prevleft;
-            int top = property._prevtop;
-            property._prevwidth = property._width;
-            property._prevheight = property._height;
-            property._prevleft = property._left;
-            property._prevtop = property._top;
-            if (property._allowfsexclusive)
+            int width = _prevwidth;
+            int height = _prevheight;
+            int left = _prevleft;
+            int top = _prevtop;
+            _prevwidth = _width;
+            _prevheight = _height;
+            _prevleft = _left;
+            _prevtop = _top;
+            if (_allowfsexclusive)
             {
-                HRESULT hr = GFX->DXGI->dxgiSwapChain1->SetFullscreenState(FALSE, NULL);
+                HRESULT hr = dxgiSwapChain1->SetFullscreenState(FALSE, NULL);
                 //reset position variables to proper non-fullscreen values
-                property._width = width;
-                property._height = height;
-                property._left = left;
-                property._top = top;
+                _width = width;
+                _height = height;
+                _left = left;
+                _top = top;
                 getWindowDPI();
-                SetWindowPos(hWnd, HWND_TOP, property._left, property._top, Scale(property._width), Scale(property._height), SWP_SHOWWINDOW);
+                SetWindowPos(hWnd, HWND_TOP, _left, _top, Scale(_width), Scale(_height), SWP_SHOWWINDOW);
                 /*
                 DXGI_SWAP_CHAIN_DESC desc;
                 DXres->DXGIres.dxgiSwapChain1->GetDesc(&desc);
@@ -281,34 +403,35 @@ namespace WUIF {
                     _fullscreen = true;
                     if (hr == DXGI_ERROR_NOT_CURRENTLY_AVAILABLE)
                     {
-                        MessageBox(NULL, _T("Unable to toggle fullscreen mode at the moment!"), _T("Mode-Switch Error"), (MB_OK | MB_ICONERROR | MB_TASKMODAL | MB_TOPMOST | MB_SETFOREGROUND));
+                        MessageBox(NULL, TEXT("Unable to toggle fullscreen mode at the moment!"), TEXT("Mode-Switch Error"), (MB_OK | MB_ICONERROR | MB_TASKMODAL | MB_TOPMOST | MB_SETFOREGROUND));
                         return;
                     }
                     else
                     {
-                        throw WUIF_exception(_T("Critical error toggling full-screen switch!"));
+                        SetLastError(hr);
+                        throw WUIF_exception(TEXT("Critical error toggling full-screen switch!"));
                     }
                 }
             }
             else
             {
                 //reset position variables to proper non-fullscreen values
-                property._width = width;
-                property._height = height;
-                property._left = left;
-                property._top = top;
-                DWORD styletemp = property._exstyle; //temp variable to hold the DWORD styles
-                property._exstyle = property._prevexstyle;
-                property._prevexstyle = styletemp;
-                styletemp = property._style;
-                property._style = property._prevstyle;
-                property._prevstyle = styletemp;
+                _width = width;
+                _height = height;
+                _left = left;
+                _top = top;
+                DWORD styletemp = _exstyle; //temp variable to hold the DWORD styles
+                _exstyle = _prevexstyle;
+                _prevexstyle = styletemp;
+                styletemp = _style;
+                _style = _prevstyle;
+                _prevstyle = styletemp;
                 //set the styles back to pre-fullscreen values
-                SetWindowLongPtr(hWnd, GWL_EXSTYLE, property._exstyle);
-                SetWindowLongPtr(hWnd, GWL_STYLE, property._style);
+                SetWindowLongPtr(hWnd, GWL_EXSTYLE, _exstyle);
+                SetWindowLongPtr(hWnd, GWL_STYLE, _style);
                 //set the window position back to pre-fullscreen values
                 getWindowDPI();
-                SetWindowPos(hWnd, HWND_TOP, property._left, property._top, Scale(property._width), Scale(property._height), SWP_SHOWWINDOW);
+                SetWindowPos(hWnd, HWND_TOP, _left, _top, Scale(_width), Scale(_height), SWP_SHOWWINDOW);
                 /*
                 DXres->DXGIres.CreateSwapChain();
                 //setup D3D dependent resources
@@ -339,53 +462,54 @@ namespace WUIF {
             info.cbSize = sizeof(MONITORINFO);
             HMONITOR monitor = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
             GetMonitorInfo(monitor, &info);
-            if (property._allowfsexclusive) //fsexclusive routine
+            if (_allowfsexclusive) //fsexclusive routine
             {
-                int width = property._width;
-                int height = property._height;
-                int left = property._left;
-                int top = property._top;
+                int width = _width;
+                int height = _height;
+                int left = _left;
+                int top = _top;
                 DXGI_SWAP_CHAIN_DESC desc = {};
-                GFX->DXGI->dxgiSwapChain1->GetDesc(&desc);
+                dxgiSwapChain1->GetDesc(&desc);
                 desc.BufferDesc.Width = info.rcMonitor.right - info.rcMonitor.left;
                 desc.BufferDesc.Height = info.rcMonitor.bottom - info.rcMonitor.top;
-                GFX->DXGI->dxgiSwapChain1->ResizeTarget(&desc.BufferDesc);
-                HRESULT hr = GFX->DXGI->dxgiSwapChain1->SetFullscreenState(TRUE, NULL);
+                dxgiSwapChain1->ResizeTarget(&desc.BufferDesc);
+                HRESULT hr = dxgiSwapChain1->SetFullscreenState(TRUE, NULL);
                 //HRESULT hr = DXGI_ERROR_NOT_CURRENTLY_AVAILABLE;
                 /*it is advisable to call ResizeTarget again with the RefreshRate member of DXGI_MODE_DESC
                 zeroed out. This amounts to a no-operation instruction in DXGI, but it can avoid issues
                 with the refresh rate*/
-                GFX->DXGI->dxgiSwapChain1->GetDesc(&desc);
+                dxgiSwapChain1->GetDesc(&desc);
                 desc.BufferDesc.RefreshRate.Denominator = 0;
                 desc.BufferDesc.RefreshRate.Numerator = 0;
-                GFX->DXGI->dxgiSwapChain1->ResizeTarget(&desc.BufferDesc);
-                property._prevwidth = width;
-                property._prevheight = height;
-                property._prevleft = left;
-                property._prevtop = top;
+                dxgiSwapChain1->ResizeTarget(&desc.BufferDesc);
+                _prevwidth = width;
+                _prevheight = height;
+                _prevleft = left;
+                _prevtop = top;
                 if ((hr != S_OK) && (hr != DXGI_STATUS_MODE_CHANGE_IN_PROGRESS))
                 {
                     _fullscreen = false;
                     if (hr == DXGI_ERROR_NOT_CURRENTLY_AVAILABLE)
                     {
                         //revert window
-                        width = property._prevwidth;
-                        height = property._prevheight;
-                        left = property._prevleft;
-                        top = property._prevtop;
-                        property._width = width;
-                        property._height = height;
-                        property._left = left;
-                        property._top = top;
+                        width = _prevwidth;
+                        height = _prevheight;
+                        left = _prevleft;
+                        top = _prevtop;
+                        _width = width;
+                        _height = height;
+                        _left = left;
+                        _top = top;
                         desc.BufferDesc.Width = width;
                         desc.BufferDesc.Height = height;
-                        GFX->DXGI->dxgiSwapChain1->ResizeTarget(&desc.BufferDesc);
-                        //SetWindowPos(hWnd, HWND_NOTOPMOST, property._prevleft, property._prevtop, property._actualwidth, property._actualheight, SWP_SHOWWINDOW);
-                        MessageBox(NULL, _T("Unable to toggle fullscreen mode at the moment!/nThe resource is not currently available, but it might become available later."), _T("Mode-Switch Error"), (MB_OK | MB_ICONERROR | MB_TASKMODAL | MB_TOPMOST | MB_SETFOREGROUND));
+                        dxgiSwapChain1->ResizeTarget(&desc.BufferDesc);
+                        //SetWindowPos(hWnd, HWND_NOTOPMOST, _prevleft, _prevtop, _actualwidth, _actualheight, SWP_SHOWWINDOW);
+                        MessageBox(NULL, TEXT("Unable to toggle fullscreen mode at the moment!/nThe resource is not currently available, but it might become available later."), TEXT("Mode-Switch Error"), (MB_OK | MB_ICONERROR | MB_TASKMODAL | MB_TOPMOST | MB_SETFOREGROUND));
                     }
                     else
                     {
-                        throw WUIF_exception(_T("Critical error toggling full-screen switch!"));
+                        SetLastError(hr);
+                        throw WUIF_exception(TEXT("Critical error toggling full-screen switch!"));
                     }
                 }
             }
@@ -393,15 +517,15 @@ namespace WUIF {
             {
                 //set the values to the fullscreen, borderless "windowed" mode
                 //don't use the function as we are changing multiple values, just make one SetWindowPos call
-                property._prevwidth = property._width;
-                property._prevheight = property._height;
-                property._prevleft = property._left;
-                property._prevtop = property._top;
+                _prevwidth = _width;
+                _prevheight = _height;
+                _prevleft = _left;
+                _prevtop = _top;
                 //set the styles
-                property.exstyle(WS_EX_APPWINDOW | WS_EX_TOPMOST);
-                //property.style(WS_POPUP | WS_VISIBLE);
-                DWORD newstyle = property._style & ~(WS_CAPTION | WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_SYSMENU | WS_THICKFRAME);
-                property.style(newstyle);
+                exstyle(WS_EX_APPWINDOW | WS_EX_TOPMOST);
+                //style(WS_POPUP | WS_VISIBLE);
+                DWORD newstyle = _style & ~(WS_CAPTION | WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_SYSMENU | WS_THICKFRAME);
+                style(newstyle);
                 //set the window position
                 SetWindowPos(hWnd, HWND_TOPMOST, info.rcMonitor.left, info.rcMonitor.top, info.rcMonitor.right - info.rcMonitor.left,
                     info.rcMonitor.bottom - info.rcMonitor.top, SWP_SHOWWINDOW);
@@ -418,10 +542,10 @@ namespace WUIF {
         }
         else
         {
-            if (GFX->D3D11->d3d11RenderTargetView)
+            if (d3d11RenderTargetView)
             {
                 //clear backbuffer
-                GFX->D3D11->d3d11ImmediateContext->ClearRenderTargetView(GFX->D3D11->d3d11RenderTargetView.Get(), property.background());
+                d3d11ImmediateContext->ClearRenderTargetView(d3d11RenderTargetView.Get(), background());
             }
         }
         if (!drawroutines.empty())
@@ -445,9 +569,9 @@ namespace WUIF {
         However, this flag cannot be used if the app is in fullscreen mode as a
         result of calling SetFullscreenState.*/
         UINT presentflags = 0;
-        if (!((property._allowfsexclusive) && (_fullscreen)))
+        if (!((_allowfsexclusive) && (_fullscreen)))
         {
-            if (GFX->DXGI->dxgiSwapChainDesc1.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING)
+            if (dxgiSwapChainDesc1.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING)
             {
                 presentflags |= DXGI_PRESENT_ALLOW_TEARING;
             }
@@ -456,18 +580,18 @@ namespace WUIF {
         {
             presentflags |= DXGI_PRESENT_TEST;
         }
-        HRESULT hr = GFX->DXGI->dxgiSwapChain1->Present(0, presentflags);
+        HRESULT hr = dxgiSwapChain1->Present(0, presentflags);
         if ((hr == S_OK) && (standby))
         {
             //take window out of standby
             standby = false;
             presentflags &= ~DXGI_PRESENT_TEST;
-            hr = GFX->DXGI->dxgiSwapChain1->Present(0, presentflags);
+            hr = dxgiSwapChain1->Present(0, presentflags);
         }
         if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET)
         {
             // If the device was removed for any reason, a new device and swap chain will need to be created.
-            GFX->HandleDeviceLost();
+            HandleDeviceLost();
         }
         /*IDXGISwapChain1::Present1 will inform you if your output window is entirely occluded via
         DXGI_STATUS_OCCLUDED. When this occurs it is recommended that your application go into
@@ -480,11 +604,10 @@ namespace WUIF {
         {
             standby = true;
         }
-        if (!GFX->DXGI->dxgiFactory->IsCurrent())
+        if (!dxgiFactory->IsCurrent())
         {
-            GFX->DXGI->dxgiFactory.Reset();
-            GFX->DXGI->GetDXGIAdapterandFactory();
+            dxgiFactory.Reset();
+            GetDXGIAdapterandFactory();
         }
     }
-
 }

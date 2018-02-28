@@ -12,9 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.*/
 #include "stdafx.h"
-#include "WUIF_Main.h"
 #include "Application\Application.h"
-
+#include "Window\Window.h"
 
 using namespace WUIF;
 
@@ -24,7 +23,10 @@ using namespace WUIF;
 //const OSVersion  App::winversion      = OSVersion::WIN7;
 //const FLAGS::GFX_Flags  App::GFXflags = FLAGS::D3D11;
 
-Window    *App::mainWindow              = nullptr;
-HINSTANCE  App::libD3D12                = NULL;
-void     (*App::ExceptionHandler)(void) = nullptr;
-std::forward_list<Window*> App::Windows;
+
+
+Window    *App::mainWindow = nullptr;
+HINSTANCE  App::libD3D12   = NULL;
+void(*App::ExceptionHandler)(void) = nullptr;
+//std::vector<Window*> App::Windows;
+std::unordered_map<int, WNDPROC> App::GWndProc_map;

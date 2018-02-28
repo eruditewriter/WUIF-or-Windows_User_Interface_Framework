@@ -14,13 +14,7 @@ limitations under the License.*/
 #include "stdafx.h"
 #include <math.h> //needed for floorf
 #include <strsafe.h> //needed for StringCchPrintf
-#include "WUIF_Main.h"
-#include "WUIF_Error.h"
 #include "GFX\GFX.h"
-#include "GFX\DXGI\DXGI.h"
-#include "GFX\D3D\D3D11.h"
-#include "GFX\D3D\D3D12.h"
-#include "GFX\D2D\D2D.h"
 #include "Application\Application.h"
 #include "Window\Window.h"
 
@@ -30,12 +24,13 @@ namespace {
 
 using namespace WUIF;
 
-#if defined(_M_IX86) //if compiling for x86
-LRESULT CALLBACK Window::_WndProc( Window* pThis, HWND hWnd,    UINT message,  WPARAM wParam, LPARAM  lParam )
+#if defined(_M_IX86)    //if compiling for x86
+LRESULT CALLBACK Window::_WndProc(_In_ Window* pThis, _In_ HWND hWnd, _In_ UINT message, _In_ WPARAM wParam, _In_ LPARAM  lParam)
 #elif defined(_M_AMD64) //if compiling for x64
-LRESULT CALLBACK Window::_WndProc( HWND hWnd,     UINT message, WPARAM wParam, LPARAM lParam, Window* pThis  )
+LRESULT CALLBACK Window::_WndProc(_In_ HWND hWnd, _In_ UINT message, _In_ WPARAM wParam, _In_ LPARAM lParam, _In_ Window* pThis)
 #endif
 {
+    LRESULT retval = 0;
     if (InterlockedDecrement(&exceptionraised) < 0)
     {
         InterlockedIncrement(&exceptionraised); //bring back to 0
@@ -43,13 +38,21 @@ LRESULT CALLBACK Window::_WndProc( HWND hWnd,     UINT message, WPARAM wParam, L
         //exceptions are not propagated in WndProc
         try
         {
+            if (!App::GWndProc_map.empty())
+            {
+                auto proc = App::GWndProc_map.count(message);
+                if (proc == 1)
+                {
+                    handled = (WNDPROC)(App::GWndProc_map[message])(hWnd, message, wParam, lParam);
+                }
+            }
             if (!pThis->WndProc_map.empty())
             {
                 auto proc = pThis->WndProc_map.count(message);
                 if (proc == 1)
                 {
                     //App::paintmutex.lock();
-                    handled = (WndProc)(pThis->WndProc_map[message])(hWnd, message, wParam, lParam);
+                    handled = (WndProc)(pThis->WndProc_map[message])(hWnd, message, wParam, lParam, pThis);
                     //App::paintmutex.unlock();
                 }
             }
@@ -61,21 +64,21 @@ LRESULT CALLBACK Window::_WndProc( HWND hWnd,     UINT message, WPARAM wParam, L
                 {
                     MINMAXINFO* mminfo = reinterpret_cast<MINMAXINFO *>(lParam);
                     //if the property is 0, treat it as requesting default, so do not change the mminfo value
-                    if (pThis->property.minwidth() != 0)
+                    if (pThis->minwidth() != 0)
                     {
-                        mminfo->ptMinTrackSize.x = pThis->property.minwidth(); //cant' make the window smaller than min width
+                        mminfo->ptMinTrackSize.x = pThis->minwidth(); //cant' make the window smaller than min width
                     }
-                    if (pThis->property.minheight() != 0)
+                    if (pThis->minheight() != 0)
                     {
-                        mminfo->ptMinTrackSize.y = pThis->property.minheight(); //cant' make the window smaller than min height
+                        mminfo->ptMinTrackSize.y = pThis->minheight(); //cant' make the window smaller than min height
                     }
-                    if (pThis->property.maxwidth() != 0)
+                    if (pThis->maxwidth() != 0)
                     {
-                        mminfo->ptMaxTrackSize.x = pThis->property.maxwidth(); //can't make window bigger than max width
+                        mminfo->ptMaxTrackSize.x = pThis->maxwidth(); //can't make window bigger than max width
                     }
-                    if (pThis->property.maxheight() != 0)
+                    if (pThis->maxheight() != 0)
                     {
-                        mminfo->ptMaxTrackSize.y = pThis->property.maxheight(); //can't make window bigger than max height
+                        mminfo->ptMaxTrackSize.y = pThis->maxheight(); //can't make window bigger than max height
                     }
                     handled = true;
                 }
@@ -83,22 +86,22 @@ LRESULT CALLBACK Window::_WndProc( HWND hWnd,     UINT message, WPARAM wParam, L
                 case WM_NCCREATE:
                 {
                     pThis->hWnd = hWnd; //set the hWnd for retrieval by other functions without needing to pass
-
-                    if (App::winversion >= OSVersion::WIN10)
+                    if ((App::winversion >= OSVersion::WIN10_1607) && (pThis->_threaddpiawarenesscontext == DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE))
                     {
-                        /*Enable per-monitor DPI scaling for caption, menu, and top-level scroll bars for top-level windows that are
-                        running as per-monitor DPI aware (This will have no effect if the thread's DPI context is not per-monitor-DPI-aware).
-                        This API should be called while processing WM_NCCREATE.*/
-                        HINSTANCE lib = LoadLibrary(_T("user32.dll"));
+                        /*Enable per-monitor DPI scaling for caption, menu, and top-level scroll
+                        bars for top-level windows that are running as per-monitor DPI aware (This
+                        will have no effect if the thread's DPI context is not
+                        per-monitor-DPI-aware). This API should be called while processing
+                        WM_NCCREATE.*/
+                        HMODULE lib = GetModuleHandle(TEXT("user32.dll"));
                         if (lib)
                         {
-                            using ENABLENONCLIENTDPISCALING = BOOL(WINAPI *)(HWND);
-                            ENABLENONCLIENTDPISCALING nonclientscaling = (ENABLENONCLIENTDPISCALING)GetProcAddress(lib, "EnableNonClientDpiScaling");
-                            if (nonclientscaling)
+                            using PFN_ENABLE_NON_CLIENT_DPI_SCALING = BOOL(WINAPI *)(HWND);
+                            PFN_ENABLE_NON_CLIENT_DPI_SCALING pfnenablenonclientscaling = (PFN_ENABLE_NON_CLIENT_DPI_SCALING)GetProcAddress(lib, "EnableNonClientDpiScaling");
+                            if (pfnenablenonclientscaling)
                             {
-                                nonclientscaling(hWnd);
+                                pfnenablenonclientscaling(hWnd);
                             }
-                            FreeLibrary(lib);
                         }
                     }
                 }
@@ -110,55 +113,55 @@ LRESULT CALLBACK Window::_WndProc( HWND hWnd,     UINT message, WPARAM wParam, L
                     GetWindowRect(hWnd, &rcWindow);
 
                     //if we are using CW_USEDEFAULT set the value to the rcWindow value
-                    if (pThis->property._left == CW_USEDEFAULT)
+                    if (pThis->left() == CW_USEDEFAULT)
                     {
-                        pThis->property._left = static_cast<int>(rcWindow.left);
+                        pThis->left(static_cast<int>(rcWindow.left));
                     }
-                    if (pThis->property._top == CW_USEDEFAULT)
+                    if (pThis->top() == CW_USEDEFAULT)
                     {
-                        pThis->property._top = static_cast<int>(rcWindow.top);
+                        pThis->top(static_cast<int>(rcWindow.top));
                     }
-                    if (pThis->property._width == CW_USEDEFAULT)
+                    if (pThis->width() == CW_USEDEFAULT)
                     {
-                        pThis->property._width = static_cast<int>(rcWindow.right - rcWindow.left);
+                        pThis->width(static_cast<int>(rcWindow.right - rcWindow.left));
                     }
-                    if (pThis->property._height == CW_USEDEFAULT)
+                    if (pThis->height() == CW_USEDEFAULT)
                     {
-                        pThis->property._height = static_cast<int>(rcWindow.bottom - rcWindow.top);
+                        pThis->height(static_cast<int>(rcWindow.bottom - rcWindow.top));
                     }
 
                     //update our _prev variables to be the same as the initial size variables
-                    pThis->property._prevleft = pThis->property._left;
-                    pThis->property._prevtop = pThis->property._top;
-                    pThis->property._prevwidth = pThis->property._width;
-                    pThis->property._prevheight = pThis->property._height;
+                    pThis->_prevleft = pThis->_left;
+                    pThis->_prevtop = pThis->_top;
+                    pThis->_prevwidth = pThis->_width;
+                    pThis->_prevheight = pThis->_height;
 
                     //calculate the size width and height should be based on scaling
                     pThis->getWindowDPI();
-                    pThis->property._actualwidth = pThis->Scale(pThis->property._width);
-                    pThis->property._actualheight = pThis->Scale(pThis->property._height);
+                    pThis->_actualwidth = pThis->Scale(pThis->width());
+                    pThis->_actualheight = pThis->Scale(pThis->height());
 
                     //setup D3D dependent resources
-                    pThis->GFX->DXGI->CreateSwapChain();
+                    pThis->CreateSwapChain();
                     //setup D3D dependent resources
                     if (WUIF::App::GFXflags & WUIF::FLAGS::D3D12)
                     {
-                        //pThis->GFX->D3D12->CreateD12Resources();
+                        //pThis->GFX->CreateD12Resources();
                     }
                     else //use D3D11
                     {
-                        pThis->GFX->D3D11->CreateDeviceResources();
+                        pThis->CreateD3D11DeviceResources();
                     }
                     if (App::GFXflags & WUIF::FLAGS::D2D)
                     {
-                        pThis->GFX->D2D->CreateDeviceResources();
+                        pThis->CreateD2DDeviceResources();
                     }
 
                     //if we have scaling resize the window to account for DPI. In this case, we resize the window for the DPI manually
-                    if ((pThis->property._actualwidth != pThis->property._width) || (pThis->property._actualheight != pThis->property._height))
+                    if ((pThis->_actualwidth != pThis->_width) || (pThis->_actualheight != pThis->_height))
                     {
-                        SetWindowPos(hWnd, HWND_TOP, pThis->property._left, pThis->property._top, pThis->property._actualwidth,
-                            pThis->property._actualheight, SWP_NOZORDER | SWP_NOACTIVATE);
+                        SetWindowPos(hWnd, HWND_TOP, pThis->_left, pThis->_top, pThis->_actualwidth,
+                            pThis->_actualheight, SWP_NOZORDER | SWP_NOACTIVATE);
                     }
 
                     handled = true;
@@ -170,7 +173,7 @@ LRESULT CALLBACK Window::_WndProc( HWND hWnd,     UINT message, WPARAM wParam, L
                     {
                         //if ((HIWORD(lParam) & KF_ALTDOWN))
                         {
-                            //if (!pThis->DXres->winparent->property.allowfsexclusive())
+                            //if (!pThis->DXres->winparent->allowfsexclusive())
                             {
                                 pThis->ToggleFullScreen();
                                 handled = true;
@@ -218,29 +221,29 @@ LRESULT CALLBACK Window::_WndProc( HWND hWnd,     UINT message, WPARAM wParam, L
                     perform any move or size change processing during the WM_WINDOWPOSCHANGED message
                     without calling */
                     WINDOWPOS *newpos = reinterpret_cast<WINDOWPOS*>(lParam);
-                    pThis->property._left = newpos->x;
-                    pThis->property._top = newpos->y;
+                    pThis->_left = newpos->x;
+                    pThis->_top = newpos->y;
                     bool minimized = newpos->x < 0 ? true : false; //less than zero means window is minimizing
                                                                    //don't update if no change to width or height or if the window is minimizing
-                    if ((pThis->property._actualwidth != newpos->cx || pThis->property._actualheight != newpos->cy) &&
+                    if ((pThis->_actualwidth != newpos->cx || pThis->_actualheight != newpos->cy) &&
                         !minimized)
                     {
                         //update the property position - don't update the previous position, that should occur explicitly
-                        pThis->property._actualwidth = newpos->cx;
-                        pThis->property._actualheight = newpos->cy;
+                        pThis->_actualwidth = newpos->cx;
+                        pThis->_actualheight = newpos->cy;
                         if (pThis->_fullscreen) //in fullscreen non-scaled and scaled are equal
                         {
-                            pThis->property._width = newpos->cx;
-                            pThis->property._height = newpos->cy;
+                            pThis->_width = newpos->cx;
+                            pThis->_height = newpos->cy;
                         }
                         else
                         {
                             pThis->getWindowDPI();
-                            pThis->property._width = MulDiv(newpos->cx, 100, pThis->scaleFactor); //width without scaling
-                            pThis->property._height = MulDiv(newpos->cy, 100, pThis->scaleFactor); //height without scaling
+                            pThis->_width = MulDiv(newpos->cx, 100, pThis->scaleFactor); //width without scaling
+                            pThis->_height = MulDiv(newpos->cy, 100, pThis->scaleFactor); //height without scaling
                         }
                         //App::paintmutex.lock();
-                        pThis->GFX->DXGI->CreateSwapChain();
+                        pThis->CreateSwapChain();
                         //setup D3D dependent resources
                         if (App::GFXflags & FLAGS::D3D12)
                         {
@@ -248,11 +251,11 @@ LRESULT CALLBACK Window::_WndProc( HWND hWnd,     UINT message, WPARAM wParam, L
                         }
                         else //use D3D11
                         {
-                            pThis->GFX->D3D11->CreateDeviceResources();
+                            pThis->CreateD3D11DeviceResources();
                         }
                         if (App::GFXflags & FLAGS::D2D)
                         {
-                            pThis->GFX->D2D->CreateDeviceResources();
+                            pThis->CreateD2DDeviceResources();
                         }
                         //App::paintmutex.unlock();
                     }
@@ -267,53 +270,103 @@ LRESULT CALLBACK Window::_WndProc( HWND hWnd,     UINT message, WPARAM wParam, L
                 break;
                 case WM_DPICHANGED:
                 {
-                    // This message tells the program that most of its window is on a monitor with a new DPI. The wParam contains
-                    // the new DPI, and the lParam contains a rect which defines the window rectangle scaled to the new DPI.
-                    pThis->scaleFactor = MulDiv(LOWORD(wParam), 100, 96);
-                    if (pThis->GFX->D2D->d2dDeviceContext)
+                    //only per monitor aware need to respond to WM_DPICHANGED
+                    if (((App::processdpiawarenesscontext) && ((*App::processdpiawarenesscontext == DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) ||
+                        (*App::processdpiawarenesscontext == DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE))) ||
+                        ((App::processdpiawareness) && (*App::processdpiawareness == PROCESS_PER_MONITOR_DPI_AWARE)))
                     {
-                        //App::paintmutex.lock();
-                        pThis->GFX->D2D->d2dDeviceContext->SetDpi(LOWORD(wParam), LOWORD(wParam));
-                        //App::paintmutex.unlock();
+                        // This message tells the program that most of its window is on a monitor with a new DPI. The wParam contains
+                        // the new DPI, and the lParam contains a rect which defines the window rectangle scaled to the new DPI.
+                        pThis->scaleFactor = MulDiv(LOWORD(wParam), 100, 96);
+                        if (pThis->d2dDeviceContext)
+                        {
+                            //App::paintmutex.lock();
+                            pThis->d2dDeviceContext->SetDpi(LOWORD(wParam), LOWORD(wParam));
+                            //App::paintmutex.unlock();
+                        }
+                        // Get the window rectangle scaled for the new DPI, retrieved from the lParam
+                        LPRECT lprcNewScale = reinterpret_cast<LPRECT>(lParam);
+                        pThis->_left = lprcNewScale->left;
+                        pThis->_top = lprcNewScale->top;
+                        pThis->_actualwidth = lprcNewScale->right - lprcNewScale->left;
+                        pThis->_width = MulDiv(lprcNewScale->right - lprcNewScale->left, 100, pThis->scaleFactor); //width without scaling
+                        pThis->_actualheight = lprcNewScale->bottom - lprcNewScale->top;
+                        pThis->_height = MulDiv(lprcNewScale->bottom - lprcNewScale->top, 100, pThis->scaleFactor);//height without scaling
+                                                                                                                         // For the new DPI: resize the window
+                        SetWindowPos(hWnd, HWND_TOP, lprcNewScale->left, lprcNewScale->top, (lprcNewScale->right - lprcNewScale->left),
+                            (lprcNewScale->bottom - lprcNewScale->top), SWP_NOZORDER | SWP_NOACTIVATE);
+                        RedrawWindow(hWnd, NULL, NULL, RDW_ERASE | RDW_INVALIDATE);
+                        handled = true;
                     }
-                    // Get the window rectangle scaled for the new DPI, retrieved from the lParam
-                    LPRECT lprcNewScale = reinterpret_cast<LPRECT>(lParam);
-                    pThis->property._left = lprcNewScale->left;
-                    pThis->property._top = lprcNewScale->top;
-                    pThis->property._actualwidth = lprcNewScale->right - lprcNewScale->left;
-                    pThis->property._width = MulDiv(lprcNewScale->right - lprcNewScale->left, 100, pThis->scaleFactor); //width without scaling
-                    pThis->property._actualheight = lprcNewScale->bottom - lprcNewScale->top;
-                    pThis->property._height = MulDiv(lprcNewScale->bottom - lprcNewScale->top, 100, pThis->scaleFactor);//height without scaling
-                                                                                                                     // For the new DPI: resize the window
-                    SetWindowPos(hWnd, HWND_TOP, lprcNewScale->left, lprcNewScale->top, (lprcNewScale->right - lprcNewScale->left),
-                        (lprcNewScale->bottom - lprcNewScale->top), SWP_NOZORDER | SWP_NOACTIVATE);
-                    RedrawWindow(hWnd, NULL, NULL, RDW_ERASE | RDW_INVALIDATE);
-                    handled = true;
                 }
                 break;
                 case WM_DESTROY:
                 {
+                    //leave full-screen exclusive mode before destroying the window
                     if (pThis->_fullscreen)
                     {
-                        if (pThis->property._allowfsexclusive)
+                        if (pThis->_allowfsexclusive)
                         {
-                            pThis->GFX->DXGI->dxgiSwapChain1->SetFullscreenState(FALSE, NULL);
+                            pThis->dxgiSwapChain1->SetFullscreenState(FALSE, NULL);
                             pThis->_fullscreen = false;
                         }
                     }
-
+                    pThis->initialized = false;
+                }
+                break;
+                case WM_NCDESTROY:
+                {
+                    /*window has been destroyed, while destroying the non-client area delete the
+                    window. We save cWndProc as we process the delete before calling the class
+                    WndProc. If this is the mainWindow also call PostQuitMessage to signal the
+                    application is now shutting down.*/
+                    WNDPROC tempcwndproc = NULL;
+                    if (pThis->cWndProc)
+                    {
+                        tempcwndproc = pThis->cWndProc;
+                    }
+                    delete pThis;
                     if (App::mainWindow == pThis)
                     {
                         PostQuitMessage(0);
+                        //handled = true;
+                        return retval;
+                    }
+                    if (tempcwndproc)
+                    {
+                        return CallWindowProc(tempcwndproc, hWnd, message, wParam, lParam);
+                    }
+                    return DefWindowProc(hWnd, message, wParam, lParam);
+                }
+                break;
+                case WM_USER+1: //For changing the window's Dpi Awareness Context
+                {
+                    HMODULE lib = GetModuleHandle(TEXT("user32.dll"));
+                    if (lib)
+                    {
+                        using PFN_SET_THREAD_DPI_AWARENESS_CONTEXT = DPI_AWARENESS_CONTEXT(WINAPI*)(DPI_AWARENESS_CONTEXT);
+                        PFN_SET_THREAD_DPI_AWARENESS_CONTEXT pfnsetthreaddpiawarenesscontext = (PFN_SET_THREAD_DPI_AWARENESS_CONTEXT)GetProcAddress(lib, "SetThreadDpiAwarenessContext");
+                        if (pfnsetthreaddpiawarenesscontext)
+                        {
+                            retval = reinterpret_cast<LRESULT>(pfnsetthreaddpiawarenesscontext(pThis->_threaddpiawarenesscontext));
+                        }
                     }
                     handled = true;
                 }
                 break;
                 default:
                 {
-                    handled = false;
+                    //handled = false;
                 }
                 }
+            }
+            if (pThis->cWndProc)
+            {
+                return CallWindowProc(pThis->cWndProc, hWnd, message, wParam, lParam);
+            }
+            if (!handled)
+            {
+                return DefWindowProc(hWnd, message, wParam, lParam);
             }
         }
         catch (const WUIF_exception &e)
@@ -324,7 +377,7 @@ LRESULT CALLBACK Window::_WndProc( HWND hWnd,     UINT message, WPARAM wParam, L
                 LPVOID lpMsgBuf;
                 LPVOID lpDisplayBuf;
                 LPTSTR lpszMessage = e.WUIFWhat();
-                TCHAR* pszTxt = _T("An unrecoverable critical error was encountered and the application is now terminating!\n\n%s\n\nReported error is %d: %s");
+                TCHAR* pszTxt = TEXT("An unrecoverable critical error was encountered and the application is now terminating!\n\n%s\n\nReported error is %d: %s");
                 DWORD err = GetLastError();
                 FormatMessage(
                     FORMAT_MESSAGE_ALLOCATE_BUFFER |
@@ -343,11 +396,11 @@ LRESULT CALLBACK Window::_WndProc( HWND hWnd,     UINT message, WPARAM wParam, L
                         LocalSize(lpDisplayBuf) / sizeof(TCHAR),
                         pszTxt,
                         lpszMessage, err, lpMsgBuf);
-                    MessageBox(NULL, reinterpret_cast<LPCTSTR>(lpDisplayBuf), _T("Critical Error"), (MB_OK | MB_ICONSTOP | MB_TASKMODAL | MB_TOPMOST | MB_SETFOREGROUND));
+                    MessageBox(NULL, reinterpret_cast<LPCTSTR>(lpDisplayBuf), TEXT("Critical Error"), (MB_OK | MB_ICONSTOP | MB_TASKMODAL | MB_TOPMOST | MB_SETFOREGROUND));
                 }
                 else //LocalAlloc failed - print fallback message
                 {
-                    MessageBox(NULL, _T("Critical Error! Unable to retrieve error message."), _T("Critical Error"), (MB_OK | MB_ICONSTOP | MB_TASKMODAL | MB_TOPMOST | MB_SETFOREGROUND));
+                    MessageBox(NULL, TEXT("Critical Error! Unable to retrieve error message."), TEXT("Critical Error"), (MB_OK | MB_ICONSTOP | MB_TASKMODAL | MB_TOPMOST | MB_SETFOREGROUND));
                 }
                 LocalFree(lpMsgBuf);
                 HeapFree(GetProcessHeap(), NULL, lpDisplayBuf);
@@ -361,9 +414,9 @@ LRESULT CALLBACK Window::_WndProc( HWND hWnd,     UINT message, WPARAM wParam, L
             try {
                 LPVOID  lpMsgBuf;
                 LPVOID  lpDisplayBuf;
-                LPTSTR  lpszMessage = _T("Critical Unhandled Exception in WindowProc!");
-                DWORD   err    = GetLastError();
-                LPCTSTR pszTxt = _T("An unrecoverable critical error was encountered and the application is now terminating!\n\n%s\n\nReported error is %d: %s");
+                LPTSTR  lpszMessage = TEXT("Critical Unhandled Exception in WindowProc!");
+                DWORD   err = GetLastError();
+                LPCTSTR pszTxt = TEXT("An unrecoverable critical error was encountered and the application is now terminating!\n\n%s\n\nReported error is %d: %s");
                 FormatMessage(
                     FORMAT_MESSAGE_ALLOCATE_BUFFER |
                     FORMAT_MESSAGE_FROM_SYSTEM |
@@ -381,11 +434,11 @@ LRESULT CALLBACK Window::_WndProc( HWND hWnd,     UINT message, WPARAM wParam, L
                         LocalSize(lpDisplayBuf) / sizeof(TCHAR),
                         pszTxt,
                         lpszMessage, err, lpMsgBuf);
-                    MessageBox(NULL, reinterpret_cast<LPCTSTR>(lpDisplayBuf), _T("Critical Error"), (MB_OK | MB_ICONSTOP | MB_TASKMODAL | MB_TOPMOST | MB_SETFOREGROUND));
+                    MessageBox(NULL, reinterpret_cast<LPCTSTR>(lpDisplayBuf), TEXT("Critical Error"), (MB_OK | MB_ICONSTOP | MB_TASKMODAL | MB_TOPMOST | MB_SETFOREGROUND));
                 }
                 else //LocalAlloc failed - print fallback message
                 {
-                    MessageBox(NULL, _T("Critical Error! Unable to retrieve error message."), _T("Critical Error"), (MB_OK | MB_ICONSTOP | MB_TASKMODAL | MB_TOPMOST | MB_SETFOREGROUND));
+                    MessageBox(NULL, TEXT("Critical Error! Unable to retrieve error message."), TEXT("Critical Error"), (MB_OK | MB_ICONSTOP | MB_TASKMODAL | MB_TOPMOST | MB_SETFOREGROUND));
                 }
                 LocalFree(lpMsgBuf);
                 HeapFree(GetProcessHeap(), NULL, lpDisplayBuf);
@@ -393,14 +446,10 @@ LRESULT CALLBACK Window::_WndProc( HWND hWnd,     UINT message, WPARAM wParam, L
             }
             catch (...) {}
         }
-        if (!handled)
-        {
-            return DefWindowProc(hWnd, message, wParam, lParam);
-        }
-    }
-    return 0;
-}
 
+    }
+    return retval;
+}
 
 /*
 bool Window::WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)

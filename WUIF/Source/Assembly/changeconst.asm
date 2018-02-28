@@ -1,44 +1,59 @@
 .686P
 .model flat
 
-PUBLIC ?nCmdShow@App@WUIF@@3HB				   ; WUIF::App::nCmdShow
-PUBLIC ?lpCmdLine@App@WUIF@@3QA_WA             ; WUIF::App::lpCmdLine
-PUBLIC ?winversion@App@WUIF@@3W4OSVersion@2@B  ; WUIF::App::winversion
-PUBLIC ?hInstance@App@WUIF@@3QAUHINSTANCE__@@A ; WUIF::App::hInstance
-ifndef DEBUG ; WUIF::App::GFXflags
-PUBLIC	?GFXflags@App@WUIF@@3EB
+PUBLIC ?nCmdShow@App@WUIF@@3HD				                                  ; WUIF::App::nCmdShow
+ifndef UNICODE
+PUBLIC ?lpCmdLine@App@WUIF@@3SADA                                             ; MBCS WUIF::App::lpCmdLine
 else
-PUBLIC	?GFXflags@App@WUIF@@3V?$checked_bit_field@$1?ui_GFX_Flags@FLAGS@WUIF@@3Ubitfield_unique_id@@AE@@B
+PUBLIC ?lpCmdLine@App@WUIF@@3SA_WA                                            ; UNICODE WUIF::App::lpCmdLine
+endif
+PUBLIC ?winversion@App@WUIF@@3W4OSVersion@2@D                                 ; WUIF::App::winversion
+PUBLIC ?hInstance@App@WUIF@@3SAUHINSTANCE__@@A                                ; WUIF::App::hInstance
+PUBLIC ?processdpiawareness@App@WUIF@@3SDW4PROCESS_DPI_AWARENESS@@D           ; WUIF::App::processdpiawareness
+PUBLIC ?processdpiawarenesscontext@App@WUIF@@3SDSAUDPI_AWARENESS_CONTEXT__@@D ; WUIF::App::processdpiawarenesscontext
+ifndef DEBUG
+PUBLIC	?GFXflags@App@WUIF@@3ED				   ; release WUIF::App::GFXflags
+else
+PUBLIC	?GFXflags@App@WUIF@@3V?$checked_bit_field@$1?ui_GFX_Flags@FLAGS@WUIF@@3Ubitfield_unique_id@@AE@@D ;debug WUIF::App::GFXflags
 endif
 
 .data
-?nCmdShow@App@WUIF@@3HB					DD 00H
-?lpCmdLine@App@WUIF@@3QA_WA				DD 00H
-?winversion@App@WUIF@@3W4OSVersion@2@B  DD 00H
-?hInstance@App@WUIF@@3QAUHINSTANCE__@@A	DD 00H
-ifndef DEBUG
-?GFXflags@App@WUIF@@3EB				    DB 00H
+?nCmdShow@App@WUIF@@3HD					                               DD 00H
+ifndef UNICODE
+?lpCmdLine@App@WUIF@@3SADA				                               DD 00H
 else
-?GFXflags@App@WUIF@@3V?$checked_bit_field@$1?ui_GFX_Flags@FLAGS@WUIF@@3Ubitfield_unique_id@@AE@@B DB 00H DUP (?)
+?lpCmdLine@App@WUIF@@3SA_WA				                               DD 00H
+endif
+?winversion@App@WUIF@@3W4OSVersion@2@D                                 DD 00H
+?hInstance@App@WUIF@@3SAUHINSTANCE__@@A	                               DD 00H
+?processdpiawareness@App@WUIF@@3SDW4PROCESS_DPI_AWARENESS@@D           DD 00H
+?processdpiawarenesscontext@App@WUIF@@3SDSAUDPI_AWARENESS_CONTEXT__@@D DD 00H
+ifndef DEBUG
+?GFXflags@App@WUIF@@3ED				    DB 00H
+else
+?GFXflags@App@WUIF@@3V?$checked_bit_field@$1?ui_GFX_Flags@FLAGS@WUIF@@3Ubitfield_unique_id@@AE@@D DB 00H DUP (?)
     ALIGN	4
 endif
 
 .code
-PUBLIC _changeconst
-_changeconst PROC
-     push ebp					 ;prologue
-     mov  ebp,esp
-     sub  esp,0C0h
-     push ebx
-     push esi
-     push edi
-     mov  eax,dword ptr [ebp+12] ;move value to eax
-     mov  ecx, [eax]			 ;dereference the value and mov to ecx
-     mov  eax, dword ptr [ebp+8] ;mov const variable's to change address to eax
-     mov  dword ptr [eax], ecx   ;move value in eax to variable
-     mov  esp,ebp
-     pop  ebp
+PUBLIC ?changeconst@WUIF@@YIXPAXPBX@Z
+?changeconst@WUIF@@YIXPAXPBX@Z PROC
+     ;non-fastcall
+     ;push ebp					  ;prologue
+     ;mov  ebp,esp
+     ;sub  esp,0C0h
+     ;mov  edx,dword ptr [ebp+12] ;move value to eax
+     ;mov  ecx,dword ptr [ebp+8]  ;mov const variable's to change address to eax
+     ;mov  eax, [edx]			  ;dereference the value and mov to eax
+     ;mov  dword ptr [ecx],eax    ;move value in eax to variable
+     ;mov  esp,ebp
+     ;pop  ebp
+     ;end non-fast call
+     ;start fast-call
+     mov eax,dword ptr [edx] ;dereference the value and mov to eax
+     mov dword ptr [ecx],eax ;move value in eax to variable
+     ;end fast-call
      ret
-_changeconst ENDP
+?changeconst@WUIF@@YIXPAXPBX@Z ENDP
 
 END

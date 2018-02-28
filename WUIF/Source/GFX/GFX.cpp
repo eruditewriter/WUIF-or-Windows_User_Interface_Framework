@@ -12,100 +12,88 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.*/
 #include "stdafx.h"
-#include "WUIF_Error.h"
 #include "GFX\GFX.h"
-#include "GFX\DXGI\DXGI.h"
-#include "GFX\D3D\D3D12.h"
-#include "GFX\D3D\D3D11.h"
-#include "GFX\D2D\D2D.h"
 #include "Application\Application.h"
 #include "Window\Window.h"
 
-using namespace WUIF;
+namespace WUIF {
 
-GFXResources::GFXResources(Window &win) :
-    DXGI(nullptr),
-    D3D12(nullptr),
-    D3D11(nullptr),
-    D2D(nullptr),
-    window(win)
-{
-    DXGI  = DBG_NEW DXGIResources(win);
-    D3D11 = DBG_NEW D3D11Resources(win);
-    D3D12 = DBG_NEW D3D12Resources(win);
-    D2D = DBG_NEW D2DResources(win);
-}
+    namespace App {
+        extern std::mutex veclock;
+        extern bool vecwrite;
+        extern std::condition_variable vecready;
+        extern std::vector<Window*> Windows;
+        extern bool is_vecwritable();
+    }
 
-GFXResources::~GFXResources()
-{
-    delete DXGI;
-    delete D3D11;
-    delete D3D12;
-    delete D2D;
-}
+    GFXResources::GFXResources(Window * const winptr) : D3D12Resources(winptr)
+    {
+    }
 
-void GFXResources::HandleDeviceLost()
-{
-#if defined(_DEBUG)
-    HRESULT reason = D3D11->d3d11Device1->GetDeviceRemovedReason();
-    DebugPrint(_T("Device removed! DXGI_ERROR code: 0x%X\n"), reason);
-    DXGI->dxgiInfoQueue.Reset();
-    DXGI->dxgiDebug.Reset();
-    D3D11->d3dInfoQueue.Reset();
-    D3D11->d3dDebug.Reset();
+    void GFXResources::HandleDeviceLost()
+    {
+        DebugPrint(TEXT("Entering GFXResources::HandleDeviceLost"));
+#ifdef _DEBUG
+        //get reason for device removal
+        HRESULT reason = d3d11Device1->GetDeviceRemovedReason();
+        DebugPrint(TEXT("Device removed! DXGI_ERROR code: 0x%X\n"), reason);
+        //reset all debug graphics resources
+        dxgiInfoQueue.Reset();
+        dxgiDebug.Reset();
+        d3dInfoQueue.Reset();
+        d3dDebug.Reset();
 #endif
-    DXGI->dxgiSwapChain1 = nullptr;
-    DXGI->dxgiDevice.Reset();
-    D3D11->d3d11ImmediateContext.Reset();
-    D3D11->d3d11Device1.Reset();
-    D3D12->d3d11on12Device.Reset();
-    D3D12->d3dCommQueue.Reset();
-    D3D12->d3d12Device.Reset();
+        //reset all graphics resources
+        dxgiSwapChain1 = nullptr;
+        dxgiDevice.Reset();
+        d3d11ImmediateContext.Reset();
+        d3d11Device1.Reset();
+        d3d11on12Device.Reset();
+        d3dCommQueue.Reset();
+        d3d12Device.Reset();
 
-    if (deviceNotify != nullptr)
-    {
-        // Notify the renderers that device resources need to be released.
-        // This ensures all references to the existing swap chain are released so that a new one can be created.
-        deviceNotify->OnDeviceLost();
-    }
-
-    if (WUIF::App::GFXflags & FLAGS::D3D12)
-    {
-        //create D3D12 device
-        D3D12Resources::CreateStaticResources();
-    }
-    else
-    {
-        //create D3D11 device
-        D3D11Resources::CreateStaticResources();
-    }
-    if (App::GFXflags & FLAGS::D2D)
-    {
-        D2DResources::CreateStaticResources();
-    }
-    //recreate the swap chain and resources for each window
-    if (!App::Windows.empty()) //Windows is empty if all windows have been closed
-    {
-        for (std::forward_list<Window*>::iterator i = App::Windows.begin(); i != App::Windows.end(); ++i)
+        /*Notify the renderers that device resources need to be released.
+        This ensures all references to the existing swap chain are released so that a new one can
+        be created.*/
+        if (deviceNotify != nullptr)
         {
-            if (App::GFXflags & FLAGS::D3D12)
+            deviceNotify->OnDeviceLost();
+        }
+
+        //recreate static resources
+        (WUIF::App::GFXflags & FLAGS::D3D12) ? CreateD3D12StaticResources() : CreateD3D11StaticResources();
+        if (App::GFXflags & FLAGS::D2D)
+        {
+            CreateD2DStaticResources();
+        }
+
+        //recreate the swap chain and resources for each window
+        //std::vector<Window*> winlist = App::GetWindows();
+        WINVECLOCK
+        if (!App::Windows.empty()) //Windows is empty if all windows have been closed
+        {
+            for (std::vector<Window*>::iterator i = App::Windows.begin(); i != App::Windows.end(); ++i)
             {
-                //static_cast<Window*>(*i)->GFX->D3D12->CreateDeviceResources();
-            }
-            else
-            {
-                static_cast<Window*>(*i)->GFX->D3D11->CreateDeviceResources();
-            }
-            if (App::GFXflags & FLAGS::D2D)
-            {
-                static_cast<Window*>(*i)->GFX->D2D->CreateDeviceResources();
+                if (App::GFXflags & FLAGS::D3D12)
+                {
+                    //static_cast<Window*>(*i)->GFX->CreateD3D12DeviceResources();
+                }
+                else
+                {
+                    static_cast<Window*>(*i)->CreateD3D11DeviceResources();
+                }
+                if (App::GFXflags & FLAGS::D2D)
+                {
+                    static_cast<Window*>(*i)->CreateD2DDeviceResources();
+                }
             }
         }
+        WINVECUNLOCK
+
+        //Notify the renderers that resources can now be created again
+        if (deviceNotify != nullptr)
+        {
+            deviceNotify->OnDeviceRestored();
+        }
     }
-    if (deviceNotify != nullptr)
-    {
-        // Notify the renderers that resources can now be created again
-        deviceNotify->OnDeviceRestored();
-    }
-    //App::paintmutex.unlock();
 }
