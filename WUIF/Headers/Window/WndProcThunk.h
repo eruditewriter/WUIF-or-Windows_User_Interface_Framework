@@ -23,74 +23,67 @@ namespace WUIF {
         unsigned short  m_push2;
         unsigned short  m_mov1;         //mov dword ptr [esp+0x4], pThis ;set our new parameter by replacing old return address
         unsigned char   m_mov2;         //(esp+0x4 is first parameter)
-        unsigned long   m_this;         //ptr to our object
-        unsigned char   m_jmp;          //jmp WndProc
-        unsigned long   m_relproc;      //relative jmp
+        unsigned long   m_this;         //our object's *this to be moved to first parameter
+        unsigned char   m_jmp;          //jmp opcode
+        unsigned long   m_relproc;      //relative address for WndProc for jmp
         static   HANDLE heapaddr;       //heap address this thunk will be initialized too
         static   long   thunkInstances; //number of instances of this class
-        bool Init(const void* pThis, DWORD_PTR proc)
+        bool Init(_In_ const void *const pThis, _In_ DWORD_PTR proc)
         {
-            m_push1 = 0x34ff; //ff 34 24 push DWORD PTR [esp]
-            m_push2 = 0xc724;
-            m_mov1 = 0x2444; // c7 44 24 04 mov dword ptr [esp+0x4],
-            m_mov2 = 0x04;
-            m_this = PtrToUlong(pThis);
-            m_jmp = 0xe9;   //jmp
-                            //calculate relative address of proc to jump to
+            m_push1   = 0x34ff; //ff 34 24 push DWORD PTR [esp]
+            m_push2   = 0xc724;
+            m_mov1    = 0x2444; //c7 44 24 04 mov dword ptr [esp+0x4],
+            m_mov2    = 0x04;
+            m_this    = PtrToUlong(pThis);
+            m_jmp     = 0xe9;   //jmp
+            //calculate relative address of proc to jump to
             m_relproc = unsigned long((INT_PTR)proc - ((INT_PTR)this + sizeof(wndprocThunk)));
             // write block from data cache and flush from instruction cache
-            if (FlushInstructionCache(GetCurrentProcess(), this, sizeof(wndprocThunk)))
-            { //succeeded
-                return true;
-            }
-            else
-            {//error
-                return false;
-            }
+            return FlushInstructionCache(GetCurrentProcess(), this, sizeof(wndprocThunk));
         }
-        //some thunks will dynamically allocate the memory for the code
         WNDPROC GetThunkAddress()
         {
+            //return the address for *this (wndprocThunk). Note: casted to WNDPROC
             return reinterpret_cast<WNDPROC>(this);
         }
-#ifdef _DEBUG
-        static void* operator new(size_t, int, char const*, int)
-#else
-        static void* operator new(size_t)
-#endif
+        #ifdef _DEBUG
+        static void* operator new(size_t size, int, char const*, int)
+        #else
+        static void* operator new(size_t size)
+        #endif
         {
             InterlockedIncrement(&thunkInstances);
             //since we can't pass a value into delete we need to store our heap address for latter freeing
             if (heapaddr == NULL)
             {
-                heapaddr = HeapCreate(HEAP_CREATE_ENABLE_EXECUTE, 0, 0);
+                heapaddr = HeapCreate(HEAP_GENERATE_EXCEPTIONS | HEAP_CREATE_ENABLE_EXECUTE, 0, 0);
                 if (heapaddr == NULL)
                 {
-                    SetLastError(WE_FAIL);
-                    throw STATUS_ACCESS_VIOLATION;
+                    throw WUIF::WUIF_exception(TEXT("HeapCreate failed for Window Thunk"));
                 }
             }
-            return HeapAlloc(heapaddr, (HEAP_GENERATE_EXCEPTIONS | HEAP_ZERO_MEMORY), sizeof(wndprocThunk));
+            return HeapAlloc(heapaddr, HEAP_ZERO_MEMORY, size);
         }
-        static void operator delete(void* pThunk)
+        static void operator delete(void *pwndprocThunk) noexcept
         {
-            //decrement thunk instance count and if zero (last thunk) destroy the heap
-            if (InterlockedDecrement(&thunkInstances) == 0)
+            //decrement thunk instance count and if zero or negative (i.e. last thunk) destroy the heap
+            if (InterlockedDecrement(&thunkInstances) <= 0)
             {
-                //we do not need to call HeapFree first
-                HeapDestroy(heapaddr);
-                //TO-DO: implement check if HeapDestroy fails
-                heapaddr = NULL;
-            }
-            else
-            {
-                //double check that the heapaddr is not null or we'll have an error then free this thunk's memory allocation
-                if (heapaddr != NULL)
+                //check heapaddr is not NULL for added safety
+                if (heapaddr)
                 {
-                    HeapFree(heapaddr, 0, pThunk);
-                    //TO-DO: implement check if HeapFree fails
-                    pThunk = nullptr;
+                    //we do not need to call HeapFree first
+                    //if HeapDestroy fails we preserve the heapaddress and just to try to free the allocated heap memory
+                    if (HeapDestroy(heapaddr))
+                    {
+                        heapaddr = NULL;
+                    }
                 }
+            }
+            //if we have not destroyed the heap try to free this thunk's memory allocation
+            if (heapaddr != NULL)
+            {
+                HeapFree(heapaddr, 0, pwndprocThunk);
             }
         }
     };
@@ -100,82 +93,73 @@ namespace WUIF {
 #pragma pack(push,2)
     struct wndprocThunk
     {
-        unsigned short     RaxMov;         //movabs rax, pThis
+        unsigned short     RaxMov;         //movabs rax, pThis ;push object *this into rax
         unsigned long long RaxImm;
-        unsigned long      RspMov;         //mov [rsp+28], rax
+        unsigned long      RspMov;         //mov [rsp+28], rax ;push *this into stack space as 5th function parameter
         unsigned short     RspMov1;
-        unsigned short     Rax2Mov;        //movabs rax, proc
+        unsigned short     Rax2Mov;        //movabs rax, proc ;load the address of WndProc function into rax
         unsigned long long ProcImm;
-        unsigned short     RaxJmp;         //jmp rax
+        unsigned short     RaxJmp;         //jmp rax ;jump to the start of WndProc function
         static   HANDLE    heapaddr;       //heap address this thunk will be initialized too
         static   long      thunkInstances; //number of instances of this class
-        bool Init(const void * const pThis, const DWORD_PTR proc)
+        bool Init(_In_ const void *const pThis, _In_ const DWORD_PTR proc)
         {
             RaxMov  = 0xb848;                    //movabs rax (48 B8), pThis
-            RaxImm = reinterpret_cast<unsigned long long>(pThis);
+            RaxImm  = reinterpret_cast<unsigned long long>(pThis);
             RspMov  = 0x24448948;                //mov qword ptr [rsp+28h], rax (48 89 44 24 28)
             RspMov1 = 0x9028;                    //to properly byte align the instruction we add a nop (no operation) (90)
             Rax2Mov = 0xb848;                    //movabs rax (48 B8), proc
             ProcImm = static_cast<unsigned long long>(proc);
             RaxJmp  = 0xe0ff;                    //jmp rax (FF EO)
-            if (FlushInstructionCache(GetCurrentProcess(), this, sizeof(wndprocThunk)))
-            {//succeeded
-                return true;
-            }
-            else
-            {//error
-                return false;
-            }
+            // write block from data cache and flush from instruction cache
+            return FlushInstructionCache(GetCurrentProcess(), this, sizeof(wndprocThunk));
         }
-        //some thunks will dynamically allocate the memory for the code
         WNDPROC GetThunkAddress()
         {
+            //return the address for *this (wndprocThunk). Note: casted to WNDPROC
             return reinterpret_cast<WNDPROC>(this);
         }
-#ifdef _DEBUG
-    #ifdef DBG_NEW
-        static void* operator new(size_t, int, char const*, int)
-    #endif
-#else
-    static void* operator new(size_t)
-#endif
+        #ifdef _DEBUG
+        static void* operator new(size_t size, int, char const*, int)
+        #else
+        static void* operator new(size_t size)
+        #endif
         {
             InterlockedIncrement(&thunkInstances);
             //since we can't pass a value into delete we need to store our heap address for latter freeing
             if (heapaddr == NULL)
             {
-                heapaddr = HeapCreate(HEAP_CREATE_ENABLE_EXECUTE, 0, 0);
+                heapaddr = HeapCreate(HEAP_GENERATE_EXCEPTIONS | HEAP_CREATE_ENABLE_EXECUTE, 0, 0);
                 if (heapaddr == NULL)
                 {
-                    SetLastError(WE_FAIL);
-                    throw STATUS_ACCESS_VIOLATION;
+                    throw WUIF::WUIF_exception(TEXT("HeapCreate failed for Window Thunk"));
                 }
             }
-            return HeapAlloc(heapaddr, (HEAP_GENERATE_EXCEPTIONS | HEAP_ZERO_MEMORY), sizeof(wndprocThunk));
+            return HeapAlloc(heapaddr, HEAP_ZERO_MEMORY, size);
         }
-
-        static void operator delete(void *pThunk)
+        static void operator delete(void *pwndprocThunk) noexcept
         {
-            //decrement thunk instance count and if zero (last thunk) destroy the heap
-            if (InterlockedDecrement(&thunkInstances) == 0)
+            //decrement thunk instance count and if zero or negative (i.e. last thunk) destroy the heap
+            if (InterlockedDecrement(&thunkInstances) <= 0)
             {
-                //we do not need to call HeapFree first
-                HeapDestroy(heapaddr);
-                //TO-DO: implement check if HeapDestroy fails
-                heapaddr = NULL;
-            }
-            else
-            {
-                //double check that the heapaddr is not null or we'll have an error then free this thunk's memory allocation
-                if (heapaddr != NULL)
+                //check heapaddr is not NULL for added safety
+                if (heapaddr)
                 {
-                    HeapFree(heapaddr, 0, pThunk);
-                    //TO-DO: implement check if HeapFree fails
-                    pThunk = nullptr;
+                    //we do not need to call HeapFree first
+                    //if HeapDestroy fails we preserve the heapaddress and just to try to free the allocated heap memory
+                    if (HeapDestroy(heapaddr))
+                    {
+                        heapaddr = NULL;
+                    }
                 }
+            }
+            //if we have not destroyed the heap try to free this thunk's memory allocation
+            if (heapaddr != NULL)
+            {
+                HeapFree(heapaddr, 0, pwndprocThunk);
             }
         }
     };
 #pragma pack(pop)
 #endif
-}
+};

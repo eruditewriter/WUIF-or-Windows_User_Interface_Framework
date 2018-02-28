@@ -17,9 +17,19 @@ namespace WUIF {
     class Window;
 
     class WindowProperties {
-        friend Window;
-        Window * const parent;
+    protected:
+        Window * const win;
+        //long    instance;    //number of window instances created
+        bool    initialized; //whether the window has been registered and created
+        UINT    scaleFactor; //dpi scaling factor
 
+        //class properties
+        HICON   _icon;
+        HICON   _iconsm;
+        HCURSOR _classcursor;
+
+        //window properties
+        LPTSTR  _windowname;
         int     _height;
         int     _width;
         int     _prevheight;
@@ -38,66 +48,69 @@ namespace WUIF {
         DWORD   _style;
         DWORD   _prevexstyle;
         DWORD   _prevstyle;
-        UINT    _cstyle; //class style - same as style initially
-        LPCTSTR _windowname;
         HMENU   _menu;
-        LPCTSTR _menuname;
-        HICON   _icon;
-        HICON   _iconsm;
-        HCURSOR _cursor;
+
         FLOAT   _background[4];
-        DPI_AWARENESS_CONTEXT _dpiawareness;
-        bool _allowfsexclusive;
-        int  _cmdshow;
+        DPI_AWARENESS_CONTEXT _threaddpiawarenesscontext;
+        bool    _allowfsexclusive;
+        int     _cmdshow;
+        bool    _fullscreen; //is window "fullscreen"
 
     public:
-        WindowProperties(Window*);
+        WindowProperties(Window* const);
+        ~WindowProperties();
 
-        int height() const { return _height; }
-        int width() const  { return _width; }
-        int actualheight() const { return _actualheight; }
-        int actualwidth()  const { return _actualwidth; }
-        long minheight()   const { return _minheight; }
-        long minwidth()    const { return _minwidth; }
-        long maxheight()   const { return _maxheight; }
-        long maxwidth()    const { return _maxwidth; }
-        int top()  const { return _top; }
-        int left() const { return _left; }
-        DWORD exstyle()  { return _exstyle; }
-        DWORD style()    const { return _style; }
-        UINT classtyle() const { return _cstyle; }
-        LPCTSTR windowname() const { return _windowname; }
-        HMENU menu() const { return _menu; }
-        LPCTSTR menuname() const { return _menuname; }
-        HICON icon()     const { return _icon; }
-        HICON iconsm()   const { return _iconsm; }
-        HCURSOR cursor() const { return _cursor; }
-        const FLOAT* background() const { return _background; }
-        DPI_AWARENESS_CONTEXT dpiawareness() const { return _dpiawareness; }
+        bool isInitialized()    const { return initialized; }
+        int height()            const { return _height; }
+        int width()             const { return _width; }
+        int actualheight()      const { return _actualheight; }
+        int actualwidth()       const { return _actualwidth; }
+        long minheight()        const { return _minheight; }
+        long minwidth()         const { return _minwidth; }
+        long maxheight()        const { return _maxheight; }
+        long maxwidth()         const { return _maxwidth; }
+        int top()               const { return _top; }
+        int left()              const { return _left; }
+        DWORD exstyle()         const { return _exstyle; }
+        DWORD style()           const { return _style; }
+        //UINT classtyle()        const { return _cstyle; }
+        LPCTSTR windowname()    const { return _windowname; }
+        HMENU menu()            const { return _menu; }
+        //LPCTSTR menuname()      const { return _menuname; }
+        HICON icon()            const { return _icon; }
+        HICON iconsm()          const { return _iconsm; }
+        HCURSOR classcursor()   const { return _classcursor; }
         bool allowfsexclusive() const { return _allowfsexclusive; }
-        int cmdshow() const { return _cmdshow; }
+        int cmdshow()           const { return _cmdshow; }
+        bool fullscreen()       const { return _fullscreen; }
+
+        const FLOAT*            background() const { return _background; }
+        DPI_AWARENESS_CONTEXT   threaddpiawarenesscontext() const { return _threaddpiawarenesscontext; }
+
+        int  Scale(int x) { return (_fullscreen ? x : MulDiv(x, scaleFactor, 100)); }
 
         void minheight(const long v) { _minheight = v; }
-        void minwidth( const long v) { _minwidth = v; }
+        void minwidth(const long v)  { _minwidth  = v; }
         void maxheight(const long v) { _maxheight = v; }
-        void maxwidth( const long v) { _maxwidth = v; }
+        void maxwidth(const long v)  { _maxwidth  = v; }
+        void cmdshow(const int v)    { _cmdshow   = v; }
+        //void menu(const HMENU v)     { _menu      = v; }
         void allowfsexclusive(const bool v) { _allowfsexclusive = v; }
-        void cmdshow(const int v) { _cmdshow = v; }
-        void menu(const HMENU v) { _menu = v; }
 
-        void height(const int v);
-        void width( const int v);
-        void top( const int v);
-        void left(const int v);
-        void exstyle(const DWORD v);
-        void windowname(const LPCTSTR v);
-        void style(const DWORD v);
-        void classstyle(const UINT v);
-        void menuname(const LPCTSTR v);
-        void icon(const HICON v);
-        void iconsm(const HICON v);
-        void cursor(const HCURSOR v);
-        void background(const FLOAT v[4]);
-        void dpiawareness(const DPI_AWARENESS_CONTEXT v);
+        void height(_In_ const int v);
+        void width(_In_ const int v);
+        void top(_In_ const int v);
+        void left(_In_ const int v);
+        void exstyle(_In_ const DWORD v);
+        HRESULT windowname(_In_ LPCTSTR v);
+        void style(_In_ const DWORD v);
+        //void classstyle(_In_ const UINT v);
+        //void menuname(_In_opt_ LPCTSTR v);
+        bool menu(_In_ LPCTSTR v);
+        void icon(_In_ const HICON v);
+        void iconsm(_In_ const HICON v);
+        void classcursor(_In_ const HCURSOR v);
+        void background(_In_ const FLOAT v[4]);
+        DPI_AWARENESS_CONTEXT threaddpiawarenesscontext(_In_ const DPI_AWARENESS_CONTEXT v);
     };
 }

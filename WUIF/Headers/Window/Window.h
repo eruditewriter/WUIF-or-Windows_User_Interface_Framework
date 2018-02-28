@@ -17,68 +17,57 @@ limitations under the License.*/
 #include <wrl/client.h> //needed for ComPtr
 #include <dxgi1_5.h>    //needed for DXGI resources
 #include "WindowProperties.h"
-
+#include "GFX\GFX.h"
 
 namespace WUIF {
 
-    class GFXResources;
-    class DXResources;
-    class Application;
     class Window;
-    class WinStruct;
 
     typedef void(*winptr)(Window*);
     struct wndprocThunk;
 
-    class Window
+    class Window : public WindowProperties, public GFXResources
     {
-        friend WindowProperties;
     public:
          Window();
         ~Window();
 
-
-
-        ATOM wndclassatom;
-
-        //class for window creation
-        WindowProperties property;
-        HWND		     hWnd;
-        HWND             hWndParent;
-        GFXResources     *GFX;
-
-
-        bool             enableHDR;
+        //variables
+        HWND		 hWnd;
+        HWND         hWndParent;
+        bool         enableHDR;
 
         //user WindowProcedure function
-        typedef bool(*WndProc)(HWND, UINT, WPARAM, LPARAM);
+        typedef bool(*WndProc)(HWND, UINT, WPARAM, LPARAM, Window*);
         std::unordered_map<int, WndProc> WndProc_map;
 
         //functions
-        WNDCLASSEX wndclass(); //returns class object registered with window
-        void       DisplayWindow();
-        void       Present();
-        void       ToggleFullScreen();
-        UINT       getWindowDPI();
-        int        Scale(int x) { return (_fullscreen ? x : MulDiv(x, scaleFactor, 100)); };
-        bool       fullscreen() { return _fullscreen; }
+        void        DisplayWindow();
+        UINT        getWindowDPI();
+        void        ToggleFullScreen();
+        void        Present();
+
         std::forward_list<winptr> drawroutines;
 
+        ATOM classatom() const { return _classatom; }
+        void classatom(_In_ const ATOM v);
     private:
-        long             instance;    //number of window instances created
-        bool             initialized; //whether the window has been registered and created
-        wndprocThunk*    thunk;	      //thunk for overloading WndProc with pointer to class object
-        UINT             scaleFactor; //dpi scaling factor
-        bool             _fullscreen; //is window "fullscreen"
-        bool             standby;     //if window is occluded we won't present any frames
+        ATOM         _classatom; //class for window creation
+        WNDPROC       cWndProc;  //sub-classed original WndProc;
+        long          instance;  //number of window instances created
+        wndprocThunk *thunk;	 //thunk for overloading WndProc with pointer to class object
 
-                                      //functions
-        #if defined(_M_IX86)    //if compiling for x86
-        static LRESULT CALLBACK _WndProc( Window*, HWND, UINT,   WPARAM, LPARAM  );
-        #elif defined(_M_AMD64) //if compiling for x64
-        static LRESULT CALLBACK _WndProc( HWND,    UINT, WPARAM, LPARAM, Window* );
+        bool          standby;   //if window is occluded we won't present any frames
+
+        //functions
+        WNDPROC pWndProc();      //returns a pointer to the window's WndProc thunk
+        //default WndProc for windows
+        #if defined(_M_IX86)     //if compiling for x86
+        static LRESULT CALLBACK _WndProc(_In_ Window*, _In_ HWND, _In_ UINT, _In_ WPARAM, _In_ LPARAM);
+        #elif defined(_M_AMD64)  //if compiling for x64
+        static LRESULT CALLBACK _WndProc(_In_ HWND, _In_ UINT, _In_ WPARAM, _In_ LPARAM, _In_ Window*);
         #endif
-        WNDPROC          pWndProc(); //returns a pointer to the window's WndProc thunk
+        //sub-classed substitute T_SC_WindowProc
+        static LRESULT CALLBACK T_SC_WindowProc(_In_ HWND, _In_ UINT, _In_ WPARAM, _In_ LPARAM);
     };
-
 }
