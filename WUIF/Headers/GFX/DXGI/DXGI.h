@@ -19,17 +19,16 @@ limitations under the License.*/
 #endif
 
 namespace WUIF {
-
     class Window;
 
     class DXGIResources
     {
     public:
-         DXGIResources(Window&);
+        DXGIResources(Window * const);
         ~DXGIResources();
 
         //global DXGI objects
-        static Microsoft::WRL::ComPtr<IDXGIFactory2>  dxgiFactory; //CreateDXGIFactory2 needs a IDXGIFactory2 object
+        static Microsoft::WRL::ComPtr<IDXGIFactory2>  dxgiFactory; //CreateDXGIFactory2 needs an IDXGIFactory2 object
         static Microsoft::WRL::ComPtr<IDXGIAdapter1>  dxgiAdapter;
         static Microsoft::WRL::ComPtr<IDXGIDevice>    dxgiDevice;
         #ifdef _DEBUG
@@ -42,21 +41,21 @@ namespace WUIF {
         Microsoft::WRL::ComPtr<IDXGISwapChain1>       dxgiSwapChain1;     //DXGI swap chain for this window
         DXGI_SWAP_CHAIN_DESC1                         dxgiSwapChainDesc1;
 
-
         bool  HDRsupport() { return _HDRsupport; }
 
-        //functions
+        //global functions
         static void GetDXGIAdapterandFactory();
+
+        //local functions
         void CreateSwapChain();
         void DetectHDRSupport();
 
-        Window &window;
-    private:
-        bool tearingsupport;
+    protected:
+        Window * const win;
         bool _HDRsupport;  //if window is on a display that supports HDR
+        //bool tearingsupport;
 
         //functions
         //void CheckTearingSupport();
     };
-
 }
