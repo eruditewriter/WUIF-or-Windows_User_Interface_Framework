@@ -9,24 +9,14 @@
       <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
       <Extensions>h;hh;hpp;hxx;hm;inl;inc;xsd</Extensions>
     </Filter>
-    <Filter Include="Resource Files">
-      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
-      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
-    </Filter>
     <Filter Include="Header Files\Application">
       <UniqueIdentifier>{93347bc1-7fc4-43bd-9c19-e17c8f22755e}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Header Files\DirectX">
-      <UniqueIdentifier>{8e68351b-e0b5-42e1-9da2-84e8808eee5f}</UniqueIdentifier>
     </Filter>
     <Filter Include="Header Files\Window">
       <UniqueIdentifier>{321dbce6-1796-44ab-acff-a6a33f092876}</UniqueIdentifier>
     </Filter>
     <Filter Include="Source Files\Application">
       <UniqueIdentifier>{3e1a92fb-7f93-4e30-a5f1-065882a6acd9}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\DirectX">
-      <UniqueIdentifier>{9af56db6-509f-4066-9384-69ab07f9b180}</UniqueIdentifier>
     </Filter>
     <Filter Include="Source Files\Window">
       <UniqueIdentifier>{4b5224af-9f68-4a04-a4df-0579ee59fc26}</UniqueIdentifier>
@@ -48,6 +38,18 @@
     </Filter>
     <Filter Include="Source Files\Assembly">
       <UniqueIdentifier>{f83440e0-edd2-435e-8ff9-4662be79a233}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\GFX\D3D">
+      <UniqueIdentifier>{b03bdecf-e07c-43cb-ae20-1f372f409cf7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\GFX\D2D">
+      <UniqueIdentifier>{67b46b5b-7cd2-4238-8ad4-764bda63fc3c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\GFX\DXGI">
+      <UniqueIdentifier>{12f4b0f2-854d-4cfd-ae62-eb017478e2eb}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{2fab8795-b28f-47a9-967b-45192e941ba0}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -90,19 +92,16 @@
     <ClInclude Include="Headers\GFX\D2D\D2D.h">
       <Filter>Header Files\GFX\D2D</Filter>
     </ClInclude>
-    <ClInclude Include="Headers\Window\Window_Core.h">
-      <Filter>Header Files\Window</Filter>
+    <ClInclude Include="Headers\WUIF_Const.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Resources\resource.h">
+      <Filter>Resource Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Source\Application\Application.cpp">
       <Filter>Source Files\Application</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\DirectX\DXGI.cpp">
-      <Filter>Source Files\DirectX</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\DirectX\Direct2D.cpp">
-      <Filter>Source Files\DirectX</Filter>
     </ClCompile>
     <ClCompile Include="Source\Window\WndProc.cpp">
       <Filter>Source Files\Window</Filter>
@@ -113,17 +112,26 @@
     <ClCompile Include="Source\Window\Window.cpp">
       <Filter>Source Files\Window</Filter>
     </ClCompile>
-    <ClCompile Include="Source\DirectX\Direct3D11.cpp">
-      <Filter>Source Files\DirectX</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\DirectX\Direct3D12.cpp">
-      <Filter>Source Files\DirectX</Filter>
-    </ClCompile>
     <ClCompile Include="Source\GFX\GFX.cpp">
       <Filter>Source Files\GFX</Filter>
     </ClCompile>
     <ClCompile Include="Source\WUIF_Main.cpp">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\stdafx.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\GFX\D3D\D3D11.cpp">
+      <Filter>Source Files\GFX\D3D</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\GFX\D2D\D2D.cpp">
+      <Filter>Source Files\GFX\D2D</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\GFX\DXGI\DXGI.cpp">
+      <Filter>Source Files\GFX\DXGI</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\GFX\D3D\D3D12.cpp">
+      <Filter>Source Files\GFX\D3D</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -133,5 +141,10 @@
     <MASM Include="Source\Assembly\changeconst.asm">
       <Filter>Source Files\Assembly</Filter>
     </MASM>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="Resources\WUIF.rc">
+      <Filter>Resource Files</Filter>
+    </ResourceCompile>
   </ItemGroup>
 </Project>
