@@ -8,8 +8,10 @@ Currently the following is implemented:
 OS Detection
 D3D11 piplelines
 D2D pipelines
-DXGI Fullscreen toggle switching (this took a bit of research and testing to gt working properly)
+DXGI Fullscreen toggle switching (this took a bit of research and testing to get working properly)
 Fullscreen windowed mode (vs above DXGI fullscreen)
-Usual Windows winow aspects
+Usual Windows window aspects
+
+You can create and use windows and generate custom functions to handle D3D 11 and D2D drawing
 
 More to come
