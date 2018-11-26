@@ -38,11 +38,16 @@
     <ClInclude Include="Headers\Application\Application.h" />
     <ClInclude Include="Headers\Bitfield.h" />
     <ClInclude Include="Headers\GFX\D2D\D2D.h" />
-    <ClInclude Include="Headers\GFX\D3D\D3D11.h" />
-    <ClInclude Include="Headers\GFX\D3D\D3D12.h" />
+    <ClInclude Include="Headers\GFX\D3D\WUIF_D3D11.h" />
+    <ClInclude Include="Headers\GFX\D3D\WUIF_D3D12.h" />
     <ClInclude Include="Headers\GFX\DXGI\DXGI.h" />
     <ClInclude Include="Headers\GFX\GFX.h" />
     <ClInclude Include="Headers\stdafx.h" />
+    <ClInclude Include="Headers\Utils\CommandLineToArgvA.h" />
+    <ClInclude Include="Headers\Utils\dllhelper.h" />
+    <ClInclude Include="Headers\Utils\ErrorExit.h" />
+    <ClInclude Include="Headers\Utils\OSCheck.h" />
+    <ClInclude Include="Headers\Utils\SetDPIAwareness.h" />
     <ClInclude Include="Headers\Window\Window.h" />
     <ClInclude Include="Headers\Window\WindowProperties.h" />
     <ClInclude Include="Headers\Window\WndProcThunk.h" />
@@ -111,11 +116,14 @@
   <ItemGroup>
     <ResourceCompile Include="Resources\WUIF.rc" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="WUIF.licenseheader" />
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>
     <ProjectGuid>{953CFB4B-A777-4535-90C9-EEAD98E37631}</ProjectGuid>
     <RootNamespace>WUIF</RootNamespace>
-    <WindowsTargetPlatformVersion>10.0.16299.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0.17763.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -253,10 +261,9 @@
       <EnablePREfast>true</EnablePREfast>
       <AssemblerOutput>All</AssemblerOutput>
       <MultiProcessorCompilation>false</MultiProcessorCompilation>
-      <MinimalRebuild>true</MinimalRebuild>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
-      <PreprocessorDefinitions>DEBUGOUTPUT;_BITFIELD;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>DEBUGOUTPUTFULL;_BITFIELD;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Lib>
       <MinimumRequiredVersion>
@@ -305,13 +312,14 @@
       <AdditionalOptions>/wd26490 %(AdditionalOptions)</AdditionalOptions>
       <ExceptionHandling>SyncCThrow</ExceptionHandling>
       <SuppressStartupBanner>true</SuppressStartupBanner>
-      <MinimalRebuild>true</MinimalRebuild>
+      <MinimalRebuild>false</MinimalRebuild>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <PreprocessKeepComments>false</PreprocessKeepComments>
       <IntrinsicFunctions>false</IntrinsicFunctions>
       <BasicRuntimeChecks>Default</BasicRuntimeChecks>
-      <PreprocessorDefinitions>DEBUGOUTPUT;_BITFIELD;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>DEBUGOUTPUTFULL;_BITFIELD;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <BrowseInformation>true</BrowseInformation>
     </ClCompile>
     <Lib>
       <SubSystem>
@@ -326,6 +334,9 @@
     <MASM>
       <UseSafeExceptionHandlers>true</UseSafeExceptionHandlers>
     </MASM>
+    <Bscmake>
+      <PreserveSbr>true</PreserveSbr>
+    </Bscmake>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='MBCS Debug|x64'">
     <ClCompile>
@@ -340,7 +351,7 @@
       <AdditionalOptions>/wd26490 %(AdditionalOptions)</AdditionalOptions>
       <ExceptionHandling>SyncCThrow</ExceptionHandling>
       <SuppressStartupBanner>true</SuppressStartupBanner>
-      <MinimalRebuild>true</MinimalRebuild>
+      <MinimalRebuild>false</MinimalRebuild>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <PreprocessKeepComments>false</PreprocessKeepComments>

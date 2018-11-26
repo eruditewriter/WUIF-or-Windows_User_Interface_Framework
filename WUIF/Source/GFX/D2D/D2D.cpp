@@ -24,14 +24,8 @@ ComPtr<ID2D1Device>         D2DResources::d2dDevice  = nullptr;
 ComPtr<IDWriteFactory1>     D2DResources::dwFactory  = nullptr;
 ComPtr<IWICImagingFactory2> D2DResources::wicFactory = nullptr;
 
-D2D1_FACTORY_TYPE   D2DResources::d2d1factorytype = D2D1_FACTORY_TYPE_SINGLE_THREADED;
-DWRITE_FACTORY_TYPE D2DResources::dwfactorytype   = DWRITE_FACTORY_TYPE_SHARED;
-
-D2DResources::D2DResources(Window * const winptr) : D3D11Resources(winptr),
-    d2dRenderTarget(nullptr),
-    d2dDeviceContext(nullptr)
-{
-}
+D2DResources::D2DResources(Window * const winptr) : D3D11Resources(winptr), d2dRenderTarget(nullptr), d2dDeviceContext(nullptr)
+{ }
 
 D2DResources::~D2DResources()
 {
@@ -44,7 +38,7 @@ void D2DResources::CreateD2DStaticResources()
 
     D2D1_FACTORY_OPTIONS fo = {};
     #ifdef _DEBUG // for debug build, enable debugging via SDK Layers with factory options debugLevel flag
-    fo.debugLevel = D2D1_DEBUG_LEVEL_INFORMATION;
+        fo.debugLevel = D2D1_DEBUG_LEVEL_INFORMATION;
     #endif
 
     //Initialize the D2D Factory

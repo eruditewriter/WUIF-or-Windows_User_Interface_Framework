@@ -1,4 +1,4 @@
-/*Copyright 2017 Jonathan Campbell
+/*Copyright (c) 2018 Jonathan Campbell
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -11,13 +11,14 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.*/
+
 #pragma once
 #include <unordered_map>
 #include <forward_list>
-#include <wrl/client.h> //needed for ComPtr
-#include <dxgi1_5.h>    //needed for DXGI resources
+//#include <wrl/client.h> //needed for ComPtr
+//#include <dxgi1_5.h>    //needed for DXGI resources
 #include "WindowProperties.h"
-#include "GFX\GFX.h"
+#include "GFX/GFX.h"
 
 namespace WUIF {
 
@@ -29,12 +30,11 @@ namespace WUIF {
     class Window : public WindowProperties, public GFXResources
     {
     public:
-         Window();
+        Window() noexcept(false);
         ~Window();
 
         //variables
-        HWND		 hWnd;
-        HWND         hWndParent;
+
         bool         enableHDR;
 
         //user WindowProcedure function
@@ -49,10 +49,10 @@ namespace WUIF {
 
         std::forward_list<winptr> drawroutines;
 
-        ATOM classatom() const { return _classatom; }
-        void classatom(_In_ const ATOM v);
+        //sub-classed substitute T_SC_WindowProc
+        static LRESULT CALLBACK T_SC_WindowProc(_In_ HWND, _In_ UINT, _In_ WPARAM, _In_ LPARAM);
     private:
-        ATOM         _classatom; //class for window creation
+
         WNDPROC       cWndProc;  //sub-classed original WndProc;
         long          instance;  //number of window instances created
         wndprocThunk *thunk;	 //thunk for overloading WndProc with pointer to class object
@@ -67,7 +67,5 @@ namespace WUIF {
         #elif defined(_M_AMD64)  //if compiling for x64
         static LRESULT CALLBACK _WndProc(_In_ HWND, _In_ UINT, _In_ WPARAM, _In_ LPARAM, _In_ Window*);
         #endif
-        //sub-classed substitute T_SC_WindowProc
-        static LRESULT CALLBACK T_SC_WindowProc(_In_ HWND, _In_ UINT, _In_ WPARAM, _In_ LPARAM);
     };
 }

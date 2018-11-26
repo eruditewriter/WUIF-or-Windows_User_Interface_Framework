@@ -12,9 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.*/
 #pragma once
-//#define REFDRIVER    //uncomment to create a D3D reference driver
 
-#include "D3D\D3D12.h"
+#include "D3D/WUIF_D3D12.h"
 
 namespace WUIF {
     //interface to notify D3D resources on device loss

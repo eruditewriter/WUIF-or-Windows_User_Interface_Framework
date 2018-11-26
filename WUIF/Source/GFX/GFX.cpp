@@ -26,14 +26,13 @@ namespace WUIF {
         extern bool is_vecwritable();
     }
 
-    GFXResources::GFXResources(Window * const winptr) : D3D12Resources(winptr)
-    {
-    }
+    GFXResources::GFXResources(Window * const winptr) : D3D12Resources(winptr), deviceNotify(nullptr)
+    { }
 
     void GFXResources::HandleDeviceLost()
     {
         DebugPrint(TEXT("Entering GFXResources::HandleDeviceLost"));
-#ifdef _DEBUG
+        #ifdef _DEBUG
         //get reason for device removal
         HRESULT reason = d3d11Device1->GetDeviceRemovedReason();
         DebugPrint(TEXT("Device removed! DXGI_ERROR code: 0x%X\n"), reason);
@@ -42,7 +41,7 @@ namespace WUIF {
         dxgiDebug.Reset();
         d3dInfoQueue.Reset();
         d3dDebug.Reset();
-#endif
+        #endif
         //reset all graphics resources
         dxgiSwapChain1 = nullptr;
         dxgiDevice.Reset();

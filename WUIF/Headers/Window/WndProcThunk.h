@@ -14,7 +14,7 @@ limitations under the License.*/
 // provides thunking code
 #pragma once
 namespace WUIF {
-    //thunk definition x86
+//thunk definition x86
 #if defined(_M_IX86)
 #pragma pack(push,1)
     struct wndprocThunk
@@ -59,6 +59,7 @@ namespace WUIF {
                 heapaddr = HeapCreate(HEAP_GENERATE_EXCEPTIONS | HEAP_CREATE_ENABLE_EXECUTE, 0, 0);
                 if (heapaddr == NULL)
                 {
+                    SetLastError(WE_THUNK_HOOK_FAIL);
                     throw WUIF::WUIF_exception(TEXT("HeapCreate failed for Window Thunk"));
                 }
             }
@@ -120,9 +121,9 @@ namespace WUIF {
             return reinterpret_cast<WNDPROC>(this);
         }
         #ifdef _DEBUG
-        static void* operator new(size_t size, int, char const*, int)
+        static __declspec(allocator) void* operator new(size_t size, int, char const*, int)
         #else
-        static void* operator new(size_t size)
+        static __declspec(allocator) void* operator new(size_t size)
         #endif
         {
             InterlockedIncrement(&thunkInstances);
@@ -132,6 +133,7 @@ namespace WUIF {
                 heapaddr = HeapCreate(HEAP_GENERATE_EXCEPTIONS | HEAP_CREATE_ENABLE_EXECUTE, 0, 0);
                 if (heapaddr == NULL)
                 {
+                    SetLastError(WE_THUNK_HOOK_FAIL);
                     throw WUIF::WUIF_exception(TEXT("HeapCreate failed for Window Thunk"));
                 }
             }

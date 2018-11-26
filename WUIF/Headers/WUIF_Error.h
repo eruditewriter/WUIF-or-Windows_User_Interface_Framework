@@ -1,4 +1,4 @@
-/*Copyright 2017 Jonathan Campbell
+/*Copyright (c) 2018 Jonathan Campbell
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -11,13 +11,14 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.*/
+
 #pragma once
 //include Windows.h before including this file
 
 //Define declarations for debugging
 
-#include<strsafe.h>
-
+#include <strsafe.h>
+//#include <winerror.h>
 //WUIF ERROR CODES
 /*Per winerror.h
 
@@ -59,13 +60,14 @@ constexpr unsigned long WE_OK                               = 0x20000000L;
 constexpr unsigned long WE_FAIL                             = 0xA0000001L;
 constexpr unsigned long WE_CRITFAIL                         = 0xE000042BL;
 constexpr unsigned long WE_INVALIDARG                       = 0xA0070057L;
-constexpr unsigned long WE_WRONGOSFORAPP                    = 0xA00401FAL;
+constexpr unsigned long WE_WRONGOSFORAPP                    = 0xA00801FAL;
+constexpr unsigned long WE_THUNK_HOOK_FAIL                  = 0xE0070597L;
 constexpr unsigned long WE_D3D12_NOT_FOUND                  = 0xA87E0001L;
-constexpr unsigned long WE_WNDPROC_EXCEPTION                = 0xE0007574L;
+constexpr unsigned long WE_WNDPROC_EXCEPTION                = 0xE007023EL;
 constexpr unsigned long WE_GRAPHICS_INVALID_DISPLAY_ADAPTER = 0xA0262002L;
 
 namespace WUIF {
-#ifdef DEBUGOUTPUT
+#if defined (DEBUGOUTPUTFULL) || defined (DEBUGOUTPUTINFO)
     #ifdef _MSC_VER
     #pragma warning(push)
     #pragma warning(disable: 26481) //don't use pointer arithmetic
@@ -86,7 +88,13 @@ namespace WUIF {
         va_list args;
         va_start(args, format);
         //write the string to the buffer, parsing the arguments
-        StringCchVPrintfEx(buffer, bufsize, &bufend, &numremaining, STRSAFE_FILL_BEHIND_NULL | STRSAFE_IGNORE_NULLS, format, args);
+        StringCchVPrintfEx(buffer,
+                           bufsize, //for null terminator
+                           &bufend,
+                           &numremaining,
+                           STRSAFE_IGNORE_NULLS,
+                           format,
+                           args);
         va_end(args);
         //check if there's room to write the new line and null termination characters
         if (numremaining < 3)
@@ -108,7 +116,7 @@ namespace WUIF {
     }
 #else
     inline void DebugPrint(_In_ const TCHAR *format, ...) { UNREFERENCED_PARAMETER(format); }
-#endif //DEBUGOUTPUT
+#endif //DEBUGOUTPUTFULL || DEBUGOUTPUTINFO
 
     //WUIF Exception structures
     class WUIF_exception {
@@ -120,6 +128,14 @@ namespace WUIF {
         const LPTSTR WUIFWhat() const { return wmsg; };
     };
 } //end namespace WUIF
+
+#ifdef DEBUGOUTPUTFULL
+    #define PrintEnter(expr) WUIF::DebugPrint(TEXT("Entering %s"), expr)
+    #define PrintExit(expr)  WUIF::DebugPrint(TEXT("Exiting %s at line# %d"), expr, __LINE__)
+#else
+    #define PrintEnter(expr) ((void)0)
+    #define PrintExit(expr)  ((void)0)
+#endif
 
 #define AssertIfFailed(expr) _ASSERTE(SUCCEEDED(expr))
 
@@ -139,13 +155,14 @@ namespace WUIF {
         }
         #endif
     }
-    inline void ThrowIfFalse(bool expr)
+    inline void ThrowIfFalse(bool expr, DWORD err)
     {
         #ifdef _DEBUG
+        UNREFERENCED_PARAMETER(err);
         _ASSERTE(expr);
         #else
         if (expr == false) {
-            SetLastError(WE_CRITFAIL);
+            SetLastError(err);
             throw WUIF_exception(TEXT("Critical Failure"));
         }
         #endif

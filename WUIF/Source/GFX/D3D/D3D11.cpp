@@ -12,9 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.*/
 #include "stdafx.h"
-#include "GFX\GFX.h"
-#include "Application\Application.h"
-#include "Window\Window.h"
+#include "GFX/GFX.h"
+#include "Application/Application.h"
+#include "Window/Window.h"
 
 using namespace Microsoft::WRL;
 using namespace WUIF;
@@ -27,12 +27,8 @@ ComPtr<ID3D11DeviceContext1> D3D11Resources::d3d11ImmediateContext = nullptr;
 ComPtr<ID3D11Debug>          D3D11Resources::d3dDebug              = nullptr;
 ComPtr<ID3D11InfoQueue>      D3D11Resources::d3dInfoQueue          = nullptr;
 #endif
-//D3D11_CREATE_DEVICE_FLAG
-UINT D3D11Resources::d3d11Flags = D3D11_CREATE_DEVICE_SINGLETHREADED;
 
-D3D11Resources::D3D11Resources(Window * const winptr) : DXGIResources(winptr),
-    d3d11BackBuffer(nullptr),
-    d3d11RenderTargetView(nullptr)
+D3D11Resources::D3D11Resources(Window * const winptr) : DXGIResources(winptr), d3d11BackBuffer(nullptr), d3d11RenderTargetView(nullptr)
 {
     //createresources = CreateD3D11RenderTargets;
 }
@@ -50,35 +46,31 @@ void D3D11Resources::CreateD3D11StaticResources()
         //enumerate the adapters and pick the first adapter to support the feature set to make the D3D11 device
         DXGIResources::GetDXGIAdapterandFactory();
     }
-
+    /*Creates a device that supports BGRA formats. Required for Direct2D interoperability with Direct3D resources.*/
+    if (App::GFXflags & FLAGS::D2D)
+        d3d11createDeviceFlags |= D3D11_CREATE_DEVICE_BGRA_SUPPORT;
     #ifdef _DEBUG
-    // Check for SDK Layer debug support.
-    if (SUCCEEDED(D3D11CreateDevice(
-        nullptr,
-        D3D_DRIVER_TYPE_NULL,       // There is no need to create a real hardware device.
-        0,
-        D3D11_CREATE_DEVICE_DEBUG,  // Check for the SDK layers.
-        nullptr,                    // Any feature level will do.
-        0,
-        D3D11_SDK_VERSION,          // Always set this to D3D11_SDK_VERSION
-        nullptr,                    // No need to keep the D3D device reference.
-        nullptr,                    // No need to know the feature level.
-        nullptr                     // No need to keep the D3D device context reference.
-    )))
+    /*To use these flags, you must have D3D11*SDKLayers.dll installed; otherwise, device creation fails. To get D3D11_1SDKLayers.dll,
+    install the SDK for Windows 8. Check for d3d11_1sdklayers.dll*/
+    HINSTANCE d3d11sdklayers = LoadLibraryEx(TEXT("d3d11_1sdklayers.dll"), nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    if (d3d11sdklayers)
     {
-        //SDK layer debug support is available, set proper flag to initialize it at device creation
-        d3d11Flags |= D3D11_CREATE_DEVICE_DEBUG;
+        d3d11createDeviceFlags |= D3D11_CREATE_DEVICE_DEBUG;
+        /*If you use this flag and the current driver does not support shader debugging, device creation fails. Shader debugging requires a
+        driver that is implemented to the WDDM for Windows 8 (WDDM 1.2). This value is not supported until Direct3D 11.1.*/
+        //d3d11createDeviceFlags |= D3D11_CREATE_DEVICE_DEBUGGABLE; //this doesn't seem to actually work
+        FreeLibrary(d3d11sdklayers);
     }
-    #else
-    //Causes the Direct3D runtime to ignore registry settings that turn on the debug layer.
-    d3d11Flags |= D3D11_CREATE_DEVICE_PREVENT_ALTERING_LAYER_SETTINGS_FROM_REGISTRY;
-    #endif //_DEBUG
-    if (App::GFXflags & WUIF::FLAGS::D2D) //using Direct2D
-    {
-        /*This flag adds support for surfaces with a different color channel ordering than the API
-        default. It is required for compatibility with Direct2D.*/
-        d3d11Flags |= D3D11_CREATE_DEVICE_BGRA_SUPPORT;
-    }
+    #endif
+    #ifndef _DEBUG
+    /*You can set this flag in your app, typically in release builds only, to prevent end users from using the DirectX Control Panel to
+    monitor how the app uses Direct3D. MS shipped the last version of the DirectX SDK in June 2010. You can also set this flag in your app
+    to prevent Direct3D debugging tools, such as Visual Studio Ultimate 2012, from hooking your app. Windows 8.1:  This flag doesn't
+    prevent Visual Studio 2013 and later running on Windows 8.1 and later from hooking your app; instead use
+    ID3D11DeviceContext2::IsAnnotationEnabled. This flag still prevents Visual Studio 2013 and later running on Windows 8 and earlier from
+    hooking your app. This value is not supported until Direct3D 11.1.*/
+    d3d11createDeviceFlags |= D3D11_CREATE_DEVICE_PREVENT_ALTERING_LAYER_SETTINGS_FROM_REGISTRY;
+    #endif
     /*This array defines the set of DirectX hardware feature levels this app will support. if you
     include D3D_FEATURE_LEVEL_12_0 and/or D3D_FEATURE_LEVEL_12_1 in your array when run on versions
     of Windows prior to Windows 10 then you get a return code of E_INVALIDARG. On <Win10 we
@@ -99,13 +91,15 @@ void D3D11Resources::CreateD3D11StaticResources()
     D3D_FEATURE_LEVEL returnedFeatureLevel;
     ComPtr<ID3D11Device> d3d11Device;
     ComPtr<ID3D11DeviceContext> d3d11Context;
+    bool looped = false;
+createdeviceagain:
     #ifdef REFDRIVER
     // Create Direct3D reference device
     if (FAILED(D3D11CreateDevice(
         nullptr,				   // Specify nullptr to use the default adapter.
         D3D_DRIVER_TYPE_REFERENCE, // Create a device using the hardware graphics driver.
         0,                         // Should be 0 unless the driver is D3D_DRIVER_TYPE_SOFTWARE.
-        d3d11Flags,		           // Set debug and Direct2D compatibility flags.
+        d3d11createDeviceFlags,		           // Set debug and Direct2D compatibility flags.
         featureLevels,             // List of feature levels this app can support.
         _countof(featureLevels),   // Size of the list above.
         D3D11_SDK_VERSION,         // Always set this to D3D11_SDK_VERSION
@@ -125,7 +119,7 @@ void D3D11Resources::CreateD3D11StaticResources()
             dxgiAdapter.Get(),
             D3D_DRIVER_TYPE_UNKNOWN,    // With an actual adapter we must use TYPE_UNKNOWN
             0,                          // Should be 0 unless the driver is D3D_DRIVER_TYPE_SOFTWARE
-            d3d11Flags,				    // Set debug and Direct2D compatibility flags.
+            d3d11createDeviceFlags,				    // Set debug and Direct2D compatibility flags.
             featureLevels,              // List of feature levels this app can support.
             _countof(featureLevels),    // Size of the list above.
             D3D11_SDK_VERSION,          // Always set this to D3D11_SDK_VERSION
@@ -140,7 +134,7 @@ void D3D11Resources::CreateD3D11StaticResources()
             dxgiAdapter.Get(),
             D3D_DRIVER_TYPE_UNKNOWN,     // With an actual adapter we must use TYPE_UNKNOWN
             0,                           // Should be 0 unless the driver is D3D_DRIVER_TYPE_SOFTWARE
-            d3d11Flags,				     // Set debug and Direct2D compatibility flags.
+            d3d11createDeviceFlags,				     // Set debug and Direct2D compatibility flags.
             &featureLevels[2],           // List of feature levels this app can support -D3D12 levels
             _countof(featureLevels) - 2, // Size of the list above.
             D3D11_SDK_VERSION,           // Always set this to D3D11_SDK_VERSION
@@ -149,6 +143,14 @@ void D3D11Resources::CreateD3D11StaticResources()
             d3d11Context.GetAddressOf()  // Returns the device immediate context.
         );
     }
+    #ifdef _DEBUG
+    if ((hr == DXGI_ERROR_UNSUPPORTED) && (looped == false))//should only occur with D3D11_CREATE_DEVICE_DEBUGGABLE
+    {
+        d3d11createDeviceFlags &= ~(D3D11_CREATE_DEVICE_DEBUGGABLE);
+        looped = true; //allow only one loop
+        goto createdeviceagain;
+    }
+    #endif
     /*platform only supports DirectX 11.0 or D3D_FEATURE_LEVEL_12_0 and/or D3D_FEATURE_LEVEL_12_1
     in array when run on versions < Windows 10 since some older graphics adapters (i.e. laptops,
     integrated graphics chips) do not have 11.1 support fall back to 11.0 device. If the Direct3D
@@ -160,44 +162,22 @@ void D3D11Resources::CreateD3D11StaticResources()
     E_INVALIDARG*/
     if (hr == E_INVALIDARG)
     {
+        //remove flags that are D3D11.1
+        #ifdef _DEBUG
+        d3d11createDeviceFlags &= ~(D3D11_CREATE_DEVICE_DEBUGGABLE);
+        #endif
         #ifndef _DEBUG
-        //not supported until D3D11.1
-        d3d11Flags = d3d11Flags & ~D3D11_CREATE_DEVICE_PREVENT_ALTERING_LAYER_SETTINGS_FROM_REGISTRY;
-        #endif //_DEBUG
+        d3d11createDeviceFlags &= ~(D3D11_CREATE_DEVICE_PREVENT_ALTERING_LAYER_SETTINGS_FROM_REGISTRY);
+        #endif
         hr = D3D11CreateDevice(dxgiAdapter.Get(), D3D_DRIVER_TYPE_UNKNOWN, 0,
-            d3d11Flags, &featureLevels[3], _countof(featureLevels) - 3,
+            d3d11createDeviceFlags, &featureLevels[3], _countof(featureLevels) - 3,
             D3D11_SDK_VERSION, d3d11Device.ReleaseAndGetAddressOf(), &returnedFeatureLevel,
             d3d11Context.ReleaseAndGetAddressOf());
     }
-    //if we failed to create device >= 11_0 then attempt to create WARP if allowed
-    if (FAILED(hr))  // If the initialization fails, fall back to the WARP device if allowed
+    if (FAILED(hr))
     {
-        if (App::GFXflags & FLAGS::WARP)
-        {
-            //we are allowed to create a warp device
-            {
-                if (FAILED(D3D11CreateDevice(
-                    nullptr,
-                    D3D_DRIVER_TYPE_WARP, // Create a WARP device instead of a hardware device.
-                    0,
-                    d3d11Flags,
-                    &featureLevels[2],
-                    _countof(featureLevels) - 2,
-                    D3D11_SDK_VERSION,
-                    d3d11Device.ReleaseAndGetAddressOf(),
-                    &returnedFeatureLevel,
-                    d3d11Context.ReleaseAndGetAddressOf())))
-                {
-                    SetLastError(WE_GRAPHICS_INVALID_DISPLAY_ADAPTER);
-                    throw WUIF_exception(TEXT("Direct3D 11 device creation failed!"));
-                }
-            }
-        }
-        else
-        {
-            SetLastError(WE_GRAPHICS_INVALID_DISPLAY_ADAPTER);
-            throw WUIF_exception(TEXT("Direct3D 11 device creation failed!"));
-        }
+        SetLastError(WE_GRAPHICS_INVALID_DISPLAY_ADAPTER);
+        throw WUIF_exception(TEXT("Direct3D 11 device creation failed!"));
     }
     #endif //REFDRIVER
     //see https://blogs.msdn.microsoft.com/chuckw/2012/11/30/direct3d-sdk-debug-layer-tricks/
@@ -222,13 +202,16 @@ void D3D11Resources::CreateD3D11StaticResources()
     }
     #endif // _DEBUG
 
-    /*We now get the ID#D11Device1 and ID3D11DeviceContext1 interfaces since we require Windows 7
-    SP1 with KB 2670838 might as well use 11.1 interface*/
+    /*We now get the ID#D11Device1 and ID3D11DeviceContext1 interfaces since we require Windows 7 SP1 with KB 2670838 might as well use
+    11.1 interface*/
+    d3d11Device1.Reset();
     ThrowIfFailed(d3d11Device.As(&d3d11Device1));
     d3d11Device.Reset();
+    d3d11ImmediateContext.Reset();
     ThrowIfFailed(d3d11Context.As(&d3d11ImmediateContext));
     d3d11Context.Reset();
     //get the IDXGIDevice
+    dxgiDevice.Reset();
     ThrowIfFailed(d3d11Device1.As(&dxgiDevice));
 
     DebugPrint(TEXT("D3D11 Device and Context created"));
@@ -285,11 +268,24 @@ void D3D11Resources::ReleaseD3D11NonStaticResources()
     d3d11RenderTargetView.Reset();
 }
 
+#ifdef _MSC_VER
+#pragma warning(push)
+//Avoid unnamed objects with custom construction and destruction
+#pragma warning(disable: 26444)
+#endif
 void D3D11Resources::RegisterD3D11ResourceCreation(FPTR func, unsigned int priority)
 {
     createresources.insert({ priority, func });
+    #ifdef _MSC_VER
+    #pragma warning(pop)
+    #endif
 }
 
+#ifdef _MSC_VER
+#pragma warning(push)
+//Avoid unnamed objects with custom construction and destruction
+#pragma warning(disable: 26444)
+#endif
 void D3D11Resources::UnregisterD3D11ResourceCreation(FPTR func)
 {
     for (std::unordered_multimap<unsigned int, FPTR>::iterator i = createresources.begin(); i != createresources.end(); i++)
@@ -300,4 +296,7 @@ void D3D11Resources::UnregisterD3D11ResourceCreation(FPTR func)
             break;
         }
     }
+    #ifdef _MSC_VER
+    #pragma warning(pop)
+    #endif
 }

@@ -18,37 +18,47 @@ namespace WUIF {
 
     class WindowProperties {
     protected:
-        Window * const win;
-        //long    instance;    //number of window instances created
+        //variables
+        //A window's *this
+        //Window * const win;
+
+        //general variables
         bool    initialized; //whether the window has been registered and created
         UINT    scaleFactor; //dpi scaling factor
 
         //class properties
+        ATOM    _classatom; //class for window creation
         HICON   _icon;
         HICON   _iconsm;
         HCURSOR _classcursor;
 
         //window properties
-        LPTSTR  _windowname;
-        int     _height;
-        int     _width;
-        int     _prevheight;
-        int     _prevwidth;
-        int     _actualheight;
-        int     _actualwidth;
-        long    _minheight;
-        long    _minwidth;
-        long    _maxheight;
-        long    _maxwidth;
-        int     _top;
-        int     _left;
-        int     _prevtop;
-        int     _prevleft;
+        //CreateWindowEx
+        HWND    _hWnd;
+        HWND    _hWndParent;
         DWORD   _exstyle;
+        LPTSTR  _windowname;
         DWORD   _style;
+        int     _left;
+        int     _top;
+        int     _width;
+        int     _height;
+        HMENU   _menu;
+
+        //internal window properties
         DWORD   _prevexstyle;
         DWORD   _prevstyle;
-        HMENU   _menu;
+        int     _prevleft;
+        int     _prevtop;
+        int     _prevwidth;
+        int     _prevheight;
+        int     _actualwidth;
+        int     _actualheight;
+        long    _minwidth;
+        long    _maxwidth;
+        long    _minheight;
+        long    _maxheight;
+
 
         FLOAT   _background[4];
         DPI_AWARENESS_CONTEXT _threaddpiawarenesscontext;
@@ -57,59 +67,76 @@ namespace WUIF {
         bool    _fullscreen; //is window "fullscreen"
 
     public:
-        WindowProperties(Window* const);
-        ~WindowProperties();
+        WindowProperties() noexcept;
+       ~WindowProperties();
 
-        bool isInitialized()    const { return initialized; }
-        int height()            const { return _height; }
-        int width()             const { return _width; }
-        int actualheight()      const { return _actualheight; }
-        int actualwidth()       const { return _actualwidth; }
-        long minheight()        const { return _minheight; }
-        long minwidth()         const { return _minwidth; }
-        long maxheight()        const { return _maxheight; }
-        long maxwidth()         const { return _maxwidth; }
-        int top()               const { return _top; }
-        int left()              const { return _left; }
-        DWORD exstyle()         const { return _exstyle; }
-        DWORD style()           const { return _style; }
-        //UINT classtyle()        const { return _cstyle; }
-        LPCTSTR windowname()    const { return _windowname; }
-        HMENU menu()            const { return _menu; }
-        //LPCTSTR menuname()      const { return _menuname; }
-        HICON icon()            const { return _icon; }
-        HICON iconsm()          const { return _iconsm; }
-        HCURSOR classcursor()   const { return _classcursor; }
-        bool allowfsexclusive() const { return _allowfsexclusive; }
-        int cmdshow()           const { return _cmdshow; }
-        bool fullscreen()       const { return _fullscreen; }
+        //functions
+        inline bool    isInitialized() const { return initialized; }
+        inline int     Scale(int x)    const { return (_fullscreen ? x : MulDiv(x, scaleFactor, 100)); }
 
-        const FLOAT*            background() const { return _background; }
-        DPI_AWARENESS_CONTEXT   threaddpiawarenesscontext() const { return _threaddpiawarenesscontext; }
+        //class "getter" functions
+        inline ATOM    classatom()     const { return _classatom; }
+        inline HICON   icon()          const { return _icon; }
+        inline HICON   iconsm()        const { return _iconsm; }
+        inline HCURSOR classcursor()   const { return _classcursor; }
 
-        int  Scale(int x) { return (_fullscreen ? x : MulDiv(x, scaleFactor, 100)); }
+        //window "getter" functions
+        inline HWND    hWnd()          const { return _hWnd; }
+        inline HWND    hWndParent()    const { return _hWndParent; }
+        inline DWORD   exstyle()       const { return _exstyle; }
+        inline LPCTSTR windowname()    const { return _windowname; }
+        inline DWORD   style()         const { return _style; }
+        inline int     left()          const { return _left; }
+        inline int     top()           const { return _top; }
+        inline int     width()         const { return _width; }
+        inline int     height()        const { return _height; }
+        inline HMENU   menu()          const { return _menu; }
 
-        void minheight(const long v) { _minheight = v; }
-        void minwidth(const long v)  { _minwidth  = v; }
-        void maxheight(const long v) { _maxheight = v; }
-        void maxwidth(const long v)  { _maxwidth  = v; }
-        void cmdshow(const int v)    { _cmdshow   = v; }
-        //void menu(const HMENU v)     { _menu      = v; }
-        void allowfsexclusive(const bool v) { _allowfsexclusive = v; }
+        inline int     actualwidth()   const { return _actualwidth; }
+        inline int     actualheight()  const { return _actualheight; }
+        inline long    minwidth()      const { return _minwidth; }
+        inline long    maxwidth()      const { return _maxwidth; }
+        inline long    minheight()     const { return _minheight; }
+        inline long    maxheight()     const { return _maxheight; }
 
-        void height(_In_ const int v);
-        void width(_In_ const int v);
-        void top(_In_ const int v);
-        void left(_In_ const int v);
-        void exstyle(_In_ const DWORD v);
+
+        inline bool allowfsexclusive() const { return _allowfsexclusive; }
+        inline int cmdshow()           const { return _cmdshow; }
+        inline bool fullscreen()       const { return _fullscreen; }
+
+        inline const FLOAT*            background() const { return _background; }
+        inline DPI_AWARENESS_CONTEXT   threaddpiawarenesscontext() const { return _threaddpiawarenesscontext; }
+
+
+        //class "setter" functions
+        bool  classatom  (_In_ const ATOM v);
+        DWORD icon       (_In_ const HICON v);
+        DWORD iconsm     (_In_ const HICON v);
+        DWORD classcursor(_In_ const HCURSOR v);
+
+        //window "setter" functions
+        DWORD   hWndParent(_In_ const HWND v);
+        DWORD   exstyle   (_In_ const DWORD v);
         HRESULT windowname(_In_ LPCTSTR v);
-        void style(_In_ const DWORD v);
+        DWORD   style     (_In_ const DWORD v);
+        BOOL    left      (_In_ const int v);
+        BOOL    top       (_In_ const int v);
+        BOOL    width     (_In_ const int v);
+        BOOL    height    (_In_ const int v);
+
+        inline void minheight(const long v) { _minheight = v; }
+        inline void minwidth(const long v)  { _minwidth  = v; }
+        inline void maxheight(const long v) { _maxheight = v; }
+        inline void maxwidth(const long v)  { _maxwidth  = v; }
+        inline void cmdshow(const int v)    { _cmdshow   = v; }
+        //void menu(const HMENU v)     { _menu      = v; }
+        inline void allowfsexclusive(const bool v) { _allowfsexclusive = v; }
+
+
         //void classstyle(_In_ const UINT v);
         //void menuname(_In_opt_ LPCTSTR v);
         bool menu(_In_ LPCTSTR v);
-        void icon(_In_ const HICON v);
-        void iconsm(_In_ const HICON v);
-        void classcursor(_In_ const HCURSOR v);
+
         void background(_In_ const FLOAT v[4]);
         DPI_AWARENESS_CONTEXT threaddpiawarenesscontext(_In_ const DPI_AWARENESS_CONTEXT v);
     };

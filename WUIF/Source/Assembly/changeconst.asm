@@ -12,9 +12,11 @@ PUBLIC ?hInstance@App@WUIF@@3SAUHINSTANCE__@@A                                ; 
 PUBLIC ?processdpiawareness@App@WUIF@@3SDW4PROCESS_DPI_AWARENESS@@D           ; WUIF::App::processdpiawareness
 PUBLIC ?processdpiawarenesscontext@App@WUIF@@3SDSAUDPI_AWARENESS_CONTEXT__@@D ; WUIF::App::processdpiawarenesscontext
 ifndef DEBUG
-PUBLIC	?GFXflags@App@WUIF@@3ED				   ; release WUIF::App::GFXflags
+; release WUIF::App::GFXflags - using integer bit field
+PUBLIC	?GFXflags@App@WUIF@@3ED
 else
-PUBLIC	?GFXflags@App@WUIF@@3V?$checked_bit_field@$1?ui_GFX_Flags@FLAGS@WUIF@@3Ubitfield_unique_id@@AE@@D ;debug WUIF::App::GFXflags
+; debug WUIF::App::GFXflags - using checked_bit_field
+PUBLIC	?GFXflags@App@WUIF@@3V?$checked_bit_field@$1?ui_GFX_Flags@FLAGS@WUIF@@3Ubitfield_unique_id@@AE@@D
 endif
 
 .data
@@ -38,7 +40,7 @@ endif
 .code
 PUBLIC ?changeconst@WUIF@@YIXPAXPBX@Z
 ?changeconst@WUIF@@YIXPAXPBX@Z PROC
-     ;non-fastcall
+     ;non-fastcall - uncomment next 10 lines (remove ";" from the beginning of each line) to change function to a non-fastcall type
      ;push ebp					  ;prologue
      ;mov  ebp,esp
      ;sub  esp,0C0h
@@ -48,12 +50,14 @@ PUBLIC ?changeconst@WUIF@@YIXPAXPBX@Z
      ;mov  dword ptr [ecx],eax    ;move value in eax to variable
      ;mov  esp,ebp
      ;pop  ebp
-     ;end non-fast call
-     ;start fast-call
+     ;ret
+     ;end non-fast call (do not uncomment this line)
+
+     ;start fast-call - comment next 3 lines (add ";" to the beginning of each line) to change function to a non-fastcall type
      mov eax,dword ptr [edx] ;dereference the value and mov to eax
      mov dword ptr [ecx],eax ;move value in eax to variable
-     ;end fast-call
      ret
+     ;end fast-call
 ?changeconst@WUIF@@YIXPAXPBX@Z ENDP
 
 END

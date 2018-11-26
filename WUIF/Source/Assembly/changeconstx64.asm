@@ -9,9 +9,11 @@ PUBLIC	?hInstance@App@WUIF@@3SEAUHINSTANCE__@@EA                                
 PUBLIC  ?processdpiawareness@App@WUIF@@3SEDW4PROCESS_DPI_AWARENESS@@ED            ; WUIF::App::processdpiawareness
 PUBLIC  ?processdpiawarenesscontext@App@WUIF@@3SEDSEAUDPI_AWARENESS_CONTEXT__@@ED ; WUIF::App::processdpiawarenesscontext
 ifndef DEBUG
-PUBLIC	?GFXflags@App@WUIF@@3ED                   ; release WUIF::App::GFXflags
+; release WUIF::App::GFXflags - using integer bit field
+PUBLIC	?GFXflags@App@WUIF@@3ED
 else
-PUBLIC	?GFXflags@App@WUIF@@3V?$checked_bit_field@$1?ui_GFX_Flags@FLAGS@WUIF@@3Ubitfield_unique_id@@AE@@D ; debug WUIF::App::GFXflags
+; debug WUIF::App::GFXflags - using checked_bit_field
+PUBLIC	?GFXflags@App@WUIF@@3V?$checked_bit_field@$1?ui_GFX_Flags@FLAGS@WUIF@@3Ubitfield_unique_id@@AE@@D
 endif
 
 

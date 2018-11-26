@@ -28,7 +28,7 @@ namespace WUIF {
         ~DXGIResources();
 
         //global DXGI objects
-        static Microsoft::WRL::ComPtr<IDXGIFactory2>  dxgiFactory; //CreateDXGIFactory2 needs an IDXGIFactory2 object
+        static Microsoft::WRL::ComPtr<IDXGIFactory2>  dxgiFactory;        //CreateDXGIFactory2 needs an IDXGIFactory2 object
         static Microsoft::WRL::ComPtr<IDXGIAdapter1>  dxgiAdapter;
         static Microsoft::WRL::ComPtr<IDXGIDevice>    dxgiDevice;
         #ifdef _DEBUG
@@ -36,15 +36,15 @@ namespace WUIF {
         static Microsoft::WRL::ComPtr<IDXGIInfoQueue> dxgiInfoQueue;
         #endif
 
+        //global functions
+        static void GetDXGIAdapterandFactory();
+
         //non-global dxgi objects and variables
         Microsoft::WRL::ComPtr<IDXGISurface>          dxgiBackBuffer;
         Microsoft::WRL::ComPtr<IDXGISwapChain1>       dxgiSwapChain1;     //DXGI swap chain for this window
         DXGI_SWAP_CHAIN_DESC1                         dxgiSwapChainDesc1;
 
         bool  HDRsupport() { return _HDRsupport; }
-
-        //global functions
-        static void GetDXGIAdapterandFactory();
 
         //local functions
         void CreateSwapChain();

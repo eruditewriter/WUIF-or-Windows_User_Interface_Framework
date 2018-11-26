@@ -16,7 +16,7 @@ limitations under the License.*/
 #include <d2d1_3.h>     //needed for D2D resources
 #include <dwrite_3.h>   //needed for D2D/DWrite resources
 #include <wincodec.h>   //needed for IWICImagingFactory2 definition
-#include "GFX\D3D\D3D11.h"
+#include "GFX/D3D/WUIF_D3D11.h"
 
 namespace WUIF {
     class Window;

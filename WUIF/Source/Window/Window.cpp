@@ -12,28 +12,32 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.*/
 #include "stdafx.h"
-#include <string> //needed for int to string conversion
-#include <ShellScalingApi.h> //needed for PROCESS_DPI_AWARENESS, PROCESS_PER_MONITOR_DPI_AWARE, MONITOR_DPI_TYPE, MDT_EFFECTIVE_DPI
-#include "Application\Application.h"
-#include "Window\Window.h"
-#include "Window\WndProcThunk.h"
-#include "GFX\GFX.h"
+#include <string> //string.h needed for int to string conversion
+/*ShellScalingApi.h needed for PROCESS_DPI_AWARENESS, PROCESS_PER_MONITOR_DPI_AWARE,
+MONITOR_DPI_TYPE, and MDT_EFFECTIVE_DPI*/
+#include <ShellScalingApi.h>
+#include "Application/Application.h"
+#include "Window/Window.h"
+#include "Window/WndProcThunk.h"
+//#include "GFX/GFX.h"
 
-HANDLE WUIF::wndprocThunk::heapaddr = NULL;
+HANDLE WUIF::wndprocThunk::heapaddr       = NULL;
 long   WUIF::wndprocThunk::thunkInstances = 0;
 
 namespace{
-    //cumulative counting of number of windows created
+    //cumulative count of number of windows created
     static long numwininstances = 0;
 }
 
 namespace WUIF {
+    /*"Hidden" WUIF::App namespace for establishing and using a Window collection*/
     namespace App {
+        //mutex for accessing Windows vector
         std::mutex veclock;
         bool vecwrite = true;
         std::condition_variable vecready;
-        //internal Window collection vector - not exposed publicly
-        std::vector<Window*> Windows;
+        std::vector<Window*> Windows; //internal Window collection vector - not exposed publicly
+
         /*Function to return a copy of the Window collection vector*/
         inline const std::vector<Window*>& GetWindows()
         {
@@ -46,11 +50,10 @@ namespace WUIF {
         }
     }
 
-    Window::Window() : WindowProperties(this), GFXResources(this),
-        hWnd(NULL),
-        hWndParent(NULL),
+    //constructor
+    Window::Window() noexcept(false):
+        GFXResources(this),
         enableHDR(false),
-        _classatom(NULL),
         cWndProc(NULL),
         instance(0),
         thunk(nullptr),
@@ -62,55 +65,61 @@ namespace WUIF {
         {
             delete thunk;
             thunk = nullptr;
-            SetLastError(WE_CRITFAIL);
+            SetLastError(WE_THUNK_HOOK_FAIL);
             throw WUIF_exception(TEXT("WndProc thunk failed to initialize properly!"));
         }
         //increment instance - use InterlockedIncrement to avoid any conflicts
         instance = InterlockedIncrement(&numwininstances);
 
+        //add to Windows collection
         WINVECLOCK
         App::Windows.push_back(this);
         WINVECUNLOCK
     }
 
+    //destructor
+    #ifdef _MSC_VER
+    #pragma warning(push)
+    //Avoid unnamed objects with custom construction and destruction
+    #pragma warning(disable: 26444)
+    #endif
     Window::~Window()
     {
+        int i = 0;
+        WINVECLOCK
+            for (std::vector<Window*>::iterator winlist = App::Windows.begin();
+                    winlist != App::Windows.end(); winlist++)
+            {
+                if (*winlist == this)
+                {
+                    App::Windows.erase(App::Windows.begin() + i);
+                    break;
+                }
+                i++;
+            }
+            if (App::Windows.size() == 0)
+                App::Windows.shrink_to_fit();
+        WINVECUNLOCK
         if (thunk != nullptr)
         {
             delete thunk;
             thunk = nullptr;
         }
-        int i = 0;
-        WINVECLOCK
-        for (std::vector<Window*>::iterator winlist = App::Windows.begin(); winlist != App::Windows.end(); winlist++)
-        {
-            if (*winlist == this)
-            {
-                App::Windows.erase(App::Windows.begin() + i);
-                break;
-            }
-            i++;
-        }
-        WINVECUNLOCK
         if (_classatom)
         {
             if (!cWndProc)
             {
-                //Before calling this function, an application must destroy all windows created with the specified class.
+                /*Before calling this function, an application must destroy all windows created
+                with the specified class.*/
                 if (UnregisterClass(MAKEINTATOM(_classatom), App::hInstance))
                 {
                     _classatom = NULL;
                 }
             }
         }
-    }
-
-    void Window::classatom(_In_ const ATOM v)
-    {
-        if (!initialized)
-        {
-            _classatom = v;
-        }
+        #ifdef _MSC_VER
+        #pragma warning(pop)
+        #endif
     }
 
     /*inline WNDPROC Window::pWndProc()
@@ -118,22 +127,32 @@ namespace WUIF {
     */
     WNDPROC Window::pWndProc()
     {
-        return (thunk ? thunk->GetThunkAddress() : throw WUIF_exception(TEXT("Invalid thunk pointer!")));
+        if (thunk)
+        {
+            return thunk->GetThunkAddress();
+        }
+        //if our thunk somehow does not exist
+        SetLastError(WE_THUNK_HOOK_FAIL);
+        throw WUIF_exception(TEXT("Invalid thunk pointer!"));
     }
 
-    /*LRESULT CALLBACK App::T_SC_WindowProc(_In_ HWND hwnd, _In_ UINT uMsg, _In_ WPARAM wParam, _In_ LPARAM lParam)
-    This is a temporary WindowProc to assist with sub-classing. It will change the original window's 
-    class WndProc pointer to the window's thunk, which points to the default _WndProc. This must
-    happen in WM_NCCREATE. The *this is passed as lpCreateParams from the CreateWindowEx call in
-    DisplayWindow(). It's a static class function so we can keep pWndProc private*/
-    LRESULT CALLBACK Window::T_SC_WindowProc(_In_ HWND hwnd, _In_ UINT uMsg, _In_ WPARAM wParam, _In_ LPARAM lParam)
+    /*LRESULT CALLBACK App::T_SC_WindowProc(_In_ HWND hwnd, _In_ UINT uMsg, _In_ WPARAM wParam,
+                                            _In_ LPARAM lParam)
+    This is a temporary WindowProc to assist with sub-classing. It will change the original
+    window's class WndProc pointer to the window's thunk, which points to the default _WndProc.
+    This must happen in WM_NCCREATE. The *this is passed as lpCreateParams from the CreateWindowEx
+    call in DisplayWindow(). It's a static class function so we can keep pWndProc private*/
+    LRESULT CALLBACK Window::T_SC_WindowProc(_In_ HWND hwnd, _In_ UINT uMsg, _In_ WPARAM wParam,
+                                             _In_ LPARAM lParam)
     {
         switch (uMsg)
         {
         case WM_NCCREATE:
         {
             //change the WndProc from the class to the Window thunk
-            SetWindowLongPtr(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(reinterpret_cast<WUIF::Window*>(reinterpret_cast<CREATESTRUCT*>(lParam)->lpCreateParams)->pWndProc()));
+            SetWindowLongPtr(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(
+                reinterpret_cast<WUIF::Window*>(
+                    reinterpret_cast<CREATESTRUCT*>(lParam)->lpCreateParams)->pWndProc()));
             //now call the WM_NCCREATE function of _WndProc to finish
             return SendMessage(hwnd, WM_NCCREATE, wParam, lParam);
         }
@@ -164,12 +183,16 @@ namespace WUIF {
             if (!_classatom)
             {
                 /*assign values to the WNDCLASSEX structure prior to calling RegisterClassEx
-                cbSize        - size, in bytes, of this structure. Set this member to sizeof(WNDCLASSEX)
+                cbSize        - size, in bytes, of this structure. Set this member to
+                                    sizeof(WNDCLASSEX)
                 style         - Window Class Styles to be applied - using CS_HREDRAW | CS_VREDRAW
-                lpfnWndProc   - a pointer to the window procedure, here it is a pointer to wndprocThunk
-                cbClsExtra    - number of extra bytes to allocate following the structure - not used
-                cbWndExtra    - number of extra bytes to allocate following the window instance - not used
-                hInstance     - handle to the instance that contains the window procedure for the class
+                lpfnWndProc   - a pointer to the window procedure, here it is a pointer to
+                                    wndprocThunk
+                cbClsExtra    - number of extra bytes to allocate following the structure- not used
+                cbWndExtra    - number of extra bytes to allocate following the window instance-
+                                    not used
+                hInstance     - handle to the instance that contains the window procedure for the
+                                    class
                 hIcon         - handle to the class icon
                 hCursor       - handle to the class cursor
                 hbrBackground - handle to the class background brush - ignored but using default of
@@ -180,15 +203,35 @@ namespace WUIF {
                 hIconSm       - handle to a small icon that is associated with the window class
                 */
 
-                /*create a string for the class name. use 'W' and append the instance thus guaranteeing
-                uniqueness) [i.e. 'W1']*/
-                LPCTSTR pszFormat = TEXT("W%d");
-                LPTSTR classname = CRT_NEW TCHAR[digits + 2]; //+1 for 'W' and +1 for null terminator
-                /*write 'W + [character equivalent of instance number]' to classname; use
-                StringCchPrintf as the mechanism to convert instance to a character equivalent*/
-                ThrowIfFailed(StringCchPrintf(classname, digits + 2, pszFormat, instance));
+                /*create a unique string for the class name. Write 'W + [character equivalent of
+                instance number]' to classname, thus guaranteeing uniqueness (i.e. 'W1'). Use
+                StringCchPrintf as the mechanism to convert instance to a character equivalent.
+                Size of array is calculated as digits +1 for 'W' and +1 for null terminator, so
+                digits + 2. A unique pointer is used just in case an exception is thrown.*/
+                std::unique_ptr<TCHAR[]> classname(CRT_NEW TCHAR[static_cast<size_t>(digits) + 2]);
+                ThrowIfFailed(StringCchPrintf(classname.get(),
+                                              static_cast<size_t>(digits) + 2,
+                                              TEXT("W%d"),
+                                              instance));
+
+                //set defaults for _icon, _iconsm, and _classcursor if they are NULL
+                if (_icon == NULL)
+                {
+                    _icon = LoadIcon(NULL, IDI_APPLICATION);
+                }
+                if (_iconsm == NULL)
+                {
+                    _iconsm = reinterpret_cast<HICON>(
+                        LoadImage(NULL, IDI_APPLICATION, IMAGE_ICON, GetSystemMetrics(SM_CXSMICON),
+                                   GetSystemMetrics(SM_CYSMICON), LR_SHARED));
+                }
+                if (_classcursor == NULL)
+                {
+                    _classcursor = LoadCursor(NULL, IDC_ARROW);
+                }
+
                 WNDCLASSEX wndclass    = {}; //zero out
-                wndclass.lpszClassName = classname;
+                wndclass.lpszClassName = classname.get();
                 wndclass.cbSize        = sizeof(WNDCLASSEX);
                 wndclass.style         = CS_HREDRAW | CS_VREDRAW;
                 wndclass.lpfnWndProc   = pWndProc();
@@ -198,10 +241,10 @@ namespace WUIF {
                 wndclass.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
                 wndclass.hIconSm       = _iconsm;
 
-                /*register our WNDCLASSEX (wndclass) for the window and store result in our class atom
-                variable. We will use the class atom instead of the class name*/
+
+                /*register our WNDCLASSEX (wndclass) for the window and store result in our class
+                atom variable. We will use the class atom instead of the class name*/
                 _classatom = RegisterClassEx(&wndclass);
-                delete[] classname;
                 if (_classatom == 0)
                 {
                     //failed
@@ -213,18 +256,38 @@ namespace WUIF {
                 //class already registered, get the WndProc and subclass
                 WNDCLASSEX wndclass = {};
                 wndclass.cbSize = sizeof(WNDCLASSEX);
-                ThrowIfFalse(GetClassInfoEx(App::hInstance, MAKEINTATOM(_classatom), &wndclass));
+                ThrowIfFalse(GetClassInfoEx(App::hInstance, MAKEINTATOM(_classatom), &wndclass), GetLastError());
+
+                //check if the class WndProc == T_SC_WindowProc, if so we already sub-classed
                 if (wndclass.lpfnWndProc != Window::T_SC_WindowProc)
                 {
                     //create a dummy window as we need an hwnd to change the class WndProc
-                    HWND tempwin = CreateWindowEx(NULL, MAKEINTATOM(_classatom), NULL, NULL, 0, 0, 0, 0, NULL, NULL, App::hInstance, NULL);
+                    HWND tempwin = CreateWindowEx(NULL, MAKEINTATOM(_classatom), NULL, NULL, 0, 0,
+                                                   0, 0, NULL, NULL, App::hInstance, NULL);
                     if (tempwin)
                     {
                         if (SetClassLongPtr(tempwin, GCLP_WNDPROC, reinterpret_cast<LONG_PTR>(Window::T_SC_WindowProc)))
+                        {
+                            //all new windows for this class will use T_SC_WindowProc
+                            //save the old WndProc
                             cWndProc = wndclass.lpfnWndProc;
-                        DestroyWindow(tempwin);
+                            DestroyWindow(tempwin);
+                        }
+                        else
+                        {
+                            //DestroyWindow will overwrite LastError - save and restore
+                            DWORD err = GetLastError();
+                            DestroyWindow(tempwin);
+                            SetLastError(err);
+                            throw WUIF_exception(TEXT("Unable to create subclass!"));
+                        }
+                    }
+                    else
+                    {
+                        throw WUIF_exception(TEXT("Unable to create subclass!"));
                     }
                 }
+                //set the window properties
                 _icon        = wndclass.hIcon;
                 _iconsm      = wndclass.hIconSm;
                 _classcursor = wndclass.hCursor;
@@ -233,9 +296,8 @@ namespace WUIF {
             if (_windowname == nullptr)
             {
                 //create a string for the window name. Use 'Window' and append the instance
-                LPCTSTR pszFormat2 = TEXT("Window%d");
-                _windowname = CRT_NEW TCHAR[digits + 7]; //+6 for 'Window' and +1 for null terminator
-                ThrowIfFailed(StringCchPrintf(_windowname, digits + 7, pszFormat2, instance));
+                _windowname = CRT_NEW TCHAR[static_cast<size_t>(digits) + 8]; //+7 for 'Window%20' and +1 for null terminator
+                ThrowIfFailed(StringCchPrintf(_windowname, static_cast<size_t>(digits) + 8, TEXT("Window %d"), instance));
             }
 
             /*Check if the window is requesting a different dpi thread context from the main (only
@@ -245,7 +307,8 @@ namespace WUIF {
             HMODULE lib = NULL;
             using PFN_SET_THREAD_DPI_AWARENESS_CONTEXT = DPI_AWARENESS_CONTEXT(WINAPI*)(DPI_AWARENESS_CONTEXT);
             PFN_SET_THREAD_DPI_AWARENESS_CONTEXT pfnsetthreaddpiawarenesscontext = nullptr;
-            if ((_threaddpiawarenesscontext != NULL) && (App::winversion >= OSVersion::WIN10_1607) && (hWndParent == NULL))
+            if ((App::winversion >= OSVersion::WIN10_1607) && (_threaddpiawarenesscontext != NULL)
+                    && (_hWndParent == NULL))
             {
                 lib = GetModuleHandle(TEXT("user32.dll"));
                 if (lib)
@@ -258,7 +321,7 @@ namespace WUIF {
                         PFN_GET_THREAD_DPI_AWARENESS_CONTEXT pfngetthreaddpiawarenesscontext = (PFN_GET_THREAD_DPI_AWARENESS_CONTEXT)GetProcAddress(lib, "GetThreadDpiAwarenessContext");
                         if (pfngetthreaddpiawarenesscontext)
                         {
-                            if ((pfnaredpiawarenesscontextsequal(pfngetthreaddpiawarenesscontext(), _threaddpiawarenesscontext)) == TRUE)
+                            if ((pfnaredpiawarenesscontextsequal(pfngetthreaddpiawarenesscontext(),                             _threaddpiawarenesscontext)) == FALSE)
                             {
                                 pfnsetthreaddpiawarenesscontext = (PFN_SET_THREAD_DPI_AWARENESS_CONTEXT)GetProcAddress(lib, "SetThreadDpiAwarenessContext");
                                 if (pfnsetthreaddpiawarenesscontext)
@@ -270,20 +333,45 @@ namespace WUIF {
                     }
                 }
             }
-
-            //NB: we store the window handle in the NCCREATE message of our WndProc
-            hWnd = CreateWindowEx(_exstyle, //extended window style
-                MAKEINTATOM(_classatom),  //null-terminated string created by a previous call to the RegisterClassEx function
-                _windowname,	            //the window name
-                _style & (~WS_VISIBLE),     //the style of the window being created, make sure the WS_VISIBLE bit is off as we do not want the window to show yet
-                _left,			            //initial horizontal position of the window
-                _top,			            //initial vertical position of the window
-                _width,			            //width, in device units, of the window
-                _height,		            //height, in device units, of the window
-                hWndParent,		            //handle to the parent or owner window of the window being created
-                _menu,			            //handle to a menu, or specifies a child-window identifier
-                App::hInstance,	            //handle to the instance of the module to be associated with the window
-                reinterpret_cast<LPVOID>(this)); //pointer to a value to be passed to the window through the CREATESTRUCT structure
+            /*CreateWindowEx:
+            DWORD     dwExStyle    = extended window style,
+            LPCTSTR   lpClassName  = null-terminated string created by a previous call to the
+                                        RegisterClassEx function,
+            LPCTSTR   lpWindowName = the window name,
+            DWORD     dwStyle      = the style of the window being created, we make sure the
+                                        WS_VISIBLE bit is off as we do not want the window to show
+                                        yet,
+            int       x            = initial horizontal position of the window,
+            int       y            = initial vertical position of the window,
+            int       nWidth       = width, in device units, of the window,
+            int       nHeight      = height, in device units, of the window,
+            HWND      hWndParent   = handle to the parent or owner window of the window being
+                                        created,
+            HMENU     hMenu        = handle to a menu, or specifies a child-window identifier,
+            HINSTANCE hInstance    = handle to the instance of the module to be associated with the
+                                        window,
+            LPVOID    lpParam      = pointer to a value to be passed to the window through the
+                                        CREATESTRUCT structure - here the *this pointer for the
+                                        window
+            Returns handle for the create window and it's stored in this->_hWnd. NB: It is also
+            assigned in NCCREATE of this->_WndProc,  but it is also assigned here for instances
+            such as sub-classing where this might not happen.*/
+            _hWnd = CreateWindowEx(_exstyle,
+                                   MAKEINTATOM(_classatom),
+                                   _windowname,
+                                   _style & (~WS_VISIBLE),
+                                   _left,
+                                   _top,
+                                   _width,
+                                   _height,
+                                   _hWndParent,
+                                   _menu,
+                                   App::hInstance,
+                                   reinterpret_cast<LPVOID>(this));
+            if (_hWnd == NULL)
+            {
+                throw WUIF_exception(TEXT("Unable to create window"));
+            }
             if (dpicontext != NULL) //restore dpi thread context
             {
                 if (pfnsetthreaddpiawarenesscontext)
@@ -291,25 +379,42 @@ namespace WUIF {
                     pfnsetthreaddpiawarenesscontext(dpicontext);
                 }
             }
-            if (hWnd == NULL)
-            {
-                throw WUIF_exception(TEXT("Unable to create window"));
-            }
             initialized = true; //window class is registered and window is "created"
-            ShowWindow(hWnd, _cmdshow); //show the window
-            UpdateWindow(hWnd); //now paint the window
+            ShowWindow(_hWnd, _cmdshow); //show the window
+            UpdateWindow(_hWnd); //now paint the window
+            _style   = static_cast<DWORD>(GetWindowLongPtr(_hWnd, GWL_STYLE));
+            _exstyle = static_cast<DWORD>(GetWindowLongPtr(_hWnd, GWL_EXSTYLE));
         }
         return;
     }
 
     UINT Window::getWindowDPI()
     {
-        if (((App::processdpiawarenesscontext != nullptr) && (*App::processdpiawarenesscontext == DPI_AWARENESS_CONTEXT_UNAWARE)) || ((App::processdpiawareness != nullptr) && (*App::processdpiawareness == PROCESS_DPI_UNAWARE)))
+        //Windows 10 provides GetDpiForWindow, a per monitor DPI scaling
+        if (App::winversion >= OSVersion::WIN10)
         {
-            return 96;
-        }
-        if (App::winversion > OSVersion::WIN8_1)  //Windows 10 provides GetDpiForWindow, a per monitor DPI scaling
-        {
+            //on windows 10_1607 and greater we check for
+            if (App::winversion >= OSVersion::WIN10_1607)
+            {
+                if (App::processdpiawarenesscontext != nullptr)
+                {
+                    HMODULE lib = GetModuleHandle(TEXT("user32.dll"));
+                    if (lib)
+                    {
+                        using PFN_ARE_DPI_AWARENESS_CONTEXTS_EQUAL = BOOL(WINAPI*)(DPI_AWARENESS_CONTEXT, DPI_AWARENESS_CONTEXT);
+                        PFN_ARE_DPI_AWARENESS_CONTEXTS_EQUAL pfnaredpiawarenesscontextsequal = (PFN_ARE_DPI_AWARENESS_CONTEXTS_EQUAL)GetProcAddress(lib, "AreDpiAwarenessContextsEqual");
+                        if (pfnaredpiawarenesscontextsequal)
+                        {
+                            if (pfnaredpiawarenesscontextsequal(*App::processdpiawarenesscontext, DPI_AWARENESS_CONTEXT_UNAWARE))
+                            {
+                                scaleFactor = 100;
+                                return 96;
+                            }
+                        }
+
+                    }
+                }
+            }
             HMODULE lib = GetModuleHandle(TEXT("user32.dll"));
             if (lib)
             {
@@ -318,13 +423,19 @@ namespace WUIF {
                 GETDPIFORWINDOW getdpiforwindow = (GETDPIFORWINDOW)GetProcAddress(lib, "GetDpiForWindow");
                 if (getdpiforwindow)
                 {
-                    UINT dpi = getdpiforwindow(hWnd);
-                    scaleFactor = MulDiv(dpi, 100, 96);
+                    UINT dpi = getdpiforwindow(_hWnd);
+                    scaleFactor = ((dpi == 96) ? 100 : MulDiv(dpi, 100, 96));
                     return dpi;
                 }
             }
         }
-        if (App::winversion > OSVersion::WIN8) //either not Win10 or GetDpiForWindow didn't load, try Win 8.1 function
+        if ((App::processdpiawareness != nullptr) && (*App::processdpiawareness == PROCESS_DPI_UNAWARE))
+        {
+            scaleFactor = 100;
+            return 96;
+        }
+        //either not Win10 or GetDpiForWindow didn't load, try Win 8.1 function
+        if (App::winversion >= OSVersion::WIN8_1)
         {
             //Windows 8.1 has the GetDpiForMonitor function
             HINSTANCE lib = LoadLibrary(TEXT("shcore.dll"));
@@ -334,14 +445,15 @@ namespace WUIF {
                 GETDPIFORMONITOR getdpi = (GETDPIFORMONITOR)GetProcAddress(lib, "GetDpiForMonitor");
                 if (getdpi)
                 {
-                    HMONITOR hMonitor = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
+                    HMONITOR hMonitor = MonitorFromWindow(_hWnd, MONITOR_DEFAULTTONEAREST);
                     UINT dpiy = 0;
                     UINT dpix = 0;
-                    /*MDT_EFFECTIVE_DPI - The effective DPI. This value should be used when determining the
-                    correct scale factor for scaling UI elements. This incorporates the scale factor set by
-                    the user for this specific display.*/
-                    getdpi(hMonitor, MDT_EFFECTIVE_DPI, &dpix, &dpiy); //uDpi will be set to the monitor's dpi
-                    scaleFactor = MulDiv(dpix, 100, 96);
+                    /*MDT_EFFECTIVE_DPI - The effective DPI. This value should be used when
+                    determining the correct scale factor for scaling UI elements. This incorporates
+                    the scale factor set by the user for this specific display. dpix will be set to
+                    the monitor's dpi*/
+                    getdpi(hMonitor, MDT_EFFECTIVE_DPI, &dpix, &dpiy);
+                    scaleFactor = ((dpix == 96) ? 100 : MulDiv(dpix, 100, 96));
                     FreeLibrary(lib);
                     return dpix;
                 }
@@ -357,8 +469,8 @@ namespace WUIF {
         scaleFactor = MulDiv(static_cast<int>(dpiX), 100, 96);
         return static_cast<int>(dpiX);
         }*/
-        int dpi = GetDeviceCaps(GetDC(hWnd), LOGPIXELSX);
-        scaleFactor = MulDiv(dpi, 100, 96);
+        int dpi = GetDeviceCaps(GetDC(_hWnd), LOGPIXELSX);
+        scaleFactor = ((dpi == 96) ? 100 : MulDiv(dpi, 100, 96));
         return dpi;
     }
 
@@ -389,7 +501,7 @@ namespace WUIF {
                 _left = left;
                 _top = top;
                 getWindowDPI();
-                SetWindowPos(hWnd, HWND_TOP, _left, _top, Scale(_width), Scale(_height), SWP_SHOWWINDOW);
+                SetWindowPos(_hWnd, HWND_TOP, _left, _top, Scale(_width), Scale(_height), SWP_SHOWWINDOW);
                 /*
                 DXGI_SWAP_CHAIN_DESC desc;
                 DXres->DXGIres.dxgiSwapChain1->GetDesc(&desc);
@@ -427,11 +539,11 @@ namespace WUIF {
                 _style = _prevstyle;
                 _prevstyle = styletemp;
                 //set the styles back to pre-fullscreen values
-                SetWindowLongPtr(hWnd, GWL_EXSTYLE, _exstyle);
-                SetWindowLongPtr(hWnd, GWL_STYLE, _style);
+                SetWindowLongPtr(_hWnd, GWL_EXSTYLE, _exstyle);
+                SetWindowLongPtr(_hWnd, GWL_STYLE, _style);
                 //set the window position back to pre-fullscreen values
                 getWindowDPI();
-                SetWindowPos(hWnd, HWND_TOP, _left, _top, Scale(_width), Scale(_height), SWP_SHOWWINDOW);
+                SetWindowPos(_hWnd, HWND_TOP, _left, _top, Scale(_width), Scale(_height), SWP_SHOWWINDOW);
                 /*
                 DXres->DXGIres.CreateSwapChain();
                 //setup D3D dependent resources
@@ -460,7 +572,7 @@ namespace WUIF {
             before calling the GetMonitorInfo function. Doing so lets the function determine the type of
             structure you are passing to it.*/
             info.cbSize = sizeof(MONITORINFO);
-            HMONITOR monitor = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
+            HMONITOR monitor = MonitorFromWindow(_hWnd, MONITOR_DEFAULTTONEAREST);
             GetMonitorInfo(monitor, &info);
             if (_allowfsexclusive) //fsexclusive routine
             {
@@ -527,7 +639,7 @@ namespace WUIF {
                 DWORD newstyle = _style & ~(WS_CAPTION | WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_SYSMENU | WS_THICKFRAME);
                 style(newstyle);
                 //set the window position
-                SetWindowPos(hWnd, HWND_TOPMOST, info.rcMonitor.left, info.rcMonitor.top, info.rcMonitor.right - info.rcMonitor.left,
+                SetWindowPos(_hWnd, HWND_TOPMOST, info.rcMonitor.left, info.rcMonitor.top, info.rcMonitor.right - info.rcMonitor.left,
                     info.rcMonitor.bottom - info.rcMonitor.top, SWP_SHOWWINDOW);
             }
         }

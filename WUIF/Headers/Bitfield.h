@@ -1,4 +1,4 @@
-/*Copyright 2017 Jonathan Campbell
+/*Copyright (c) 2018 Jonathan Campbell
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -11,6 +11,7 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.*/
+
 //this was inspired from http://www.artima.com/cppsource/safelabels.html
 #pragma once
 #include <assert.h>
@@ -260,7 +261,8 @@ public:
     }
     template <unsigned int i> static constexpr checked_bit_mask set_bits() noexcept
     {
-        static_assert(i <= (static_cast<word_t>(1) << ((8 * sizeof(word_t)) - 1)), "value is greater than number of bit combinations"); //2 raised to the power of number of bits - 1, gives the unsigned integer value
+        //2 raised to the power of number of bits - 1, gives the unsigned integer value
+        static_assert(i <= (static_cast<word_t>(1) << ((8 * sizeof(word_t)) - 1)), "value is greater than number of bit combinations");
         return checked_bit_mask(i);
     }
 

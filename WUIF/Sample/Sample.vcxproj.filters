@@ -47,4 +47,7 @@
   <ItemGroup>
     <Manifest Include="sample.manifest" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="Sample.licenseheader" />
+  </ItemGroup>
 </Project>

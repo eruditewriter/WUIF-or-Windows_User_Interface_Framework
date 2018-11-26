@@ -1,3 +1,17 @@
+/*Copyright (c) 2018 Jonathan Campbell
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.*/
+
 // stdafx.h : include file for standard system include files,
 // or project specific include files that are used frequently, but
 // are changed infrequently
@@ -16,14 +30,11 @@
 #define STRICT
 #include <windows.h>
 #include <tchar.h>
-#ifdef _MSC_VER
+#if defined(_MSC_VER) && defined(_DEBUG)
     #define _CRTDBG_MAP_ALLOC
     #include <stdlib.h>
-    #include <crtdbg.h>  //crtdbg.h is needed for _ASSERTE and for map_alloc
-    #ifdef _DEBUG
-        //CRT_NEW is the definition for the debug heap manager and evaluating "new"
-        #define CRT_NEW new ( _NORMAL_BLOCK , __FILE__ , __LINE__ )
-        #else
-        #define DBG_NEW new
-    #endif //_DEBUG
-#endif //_MSC_VER
+    #include <crtdbg.h>                                         //crtdbg.h is needed for _ASSERTE and for map_alloc
+    #define CRT_NEW new ( _NORMAL_BLOCK , __FILE__ , __LINE__ ) //CRT_NEW is the definition for the debug heap manager and evaluating "new"
+#else
+    #define CRT_NEW new
+#endif //_MSC_VER && _DEBUG

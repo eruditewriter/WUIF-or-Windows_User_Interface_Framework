@@ -51,6 +51,9 @@
     <Filter Include="Resource Files">
       <UniqueIdentifier>{2fab8795-b28f-47a9-967b-45192e941ba0}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\Utils">
+      <UniqueIdentifier>{89c8b0e1-7cf4-4d63-b14e-f7176677f0e3}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Headers\Application\Application.h">
@@ -83,12 +86,6 @@
     <ClInclude Include="Headers\GFX\DXGI\DXGI.h">
       <Filter>Header Files\GFX\DXGI</Filter>
     </ClInclude>
-    <ClInclude Include="Headers\GFX\D3D\D3D11.h">
-      <Filter>Header Files\GFX\D3D</Filter>
-    </ClInclude>
-    <ClInclude Include="Headers\GFX\D3D\D3D12.h">
-      <Filter>Header Files\GFX\D3D</Filter>
-    </ClInclude>
     <ClInclude Include="Headers\GFX\D2D\D2D.h">
       <Filter>Header Files\GFX\D2D</Filter>
     </ClInclude>
@@ -97,6 +94,27 @@
     </ClInclude>
     <ClInclude Include="Resources\resource.h">
       <Filter>Resource Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Headers\Utils\OSCheck.h">
+      <Filter>Header Files\Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="Headers\Utils\ErrorExit.h">
+      <Filter>Header Files\Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="Headers\Utils\CommandLineToArgvA.h">
+      <Filter>Header Files\Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="Headers\Utils\SetDPIAwareness.h">
+      <Filter>Header Files\Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="Headers\Utils\dllhelper.h">
+      <Filter>Header Files\Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="Headers\GFX\D3D\WUIF_D3D12.h">
+      <Filter>Header Files\GFX\D3D</Filter>
+    </ClInclude>
+    <ClInclude Include="Headers\GFX\D3D\WUIF_D3D11.h">
+      <Filter>Header Files\GFX\D3D</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -146,5 +164,8 @@
     <ResourceCompile Include="Resources\WUIF.rc">
       <Filter>Resource Files</Filter>
     </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="WUIF.licenseheader" />
   </ItemGroup>
 </Project>

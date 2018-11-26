@@ -63,44 +63,69 @@ LRESULT CALLBACK Window::_WndProc(_In_ HWND hWnd, _In_ UINT message, _In_ WPARAM
                 case WM_GETMINMAXINFO:
                 {
                     MINMAXINFO* mminfo = reinterpret_cast<MINMAXINFO *>(lParam);
-                    //if the property is 0, treat it as requesting default, so do not change the mminfo value
-                    if (pThis->minwidth() != 0)
+                    /*if the property is 0, treat it as requesting default, so do not change the
+                    mminfo value*/
+                    if (pThis->_minwidth != 0)
                     {
-                        mminfo->ptMinTrackSize.x = pThis->minwidth(); //cant' make the window smaller than min width
+                        //cant' make the window smaller than min width
+                        mminfo->ptMinTrackSize.x = pThis->_minwidth;
                     }
-                    if (pThis->minheight() != 0)
+                    if (pThis->_minheight != 0)
                     {
-                        mminfo->ptMinTrackSize.y = pThis->minheight(); //cant' make the window smaller than min height
+                        //cant' make the window smaller than min height
+                        mminfo->ptMinTrackSize.y = pThis->_minheight;
                     }
-                    if (pThis->maxwidth() != 0)
+                    if (pThis->_maxwidth != 0)
                     {
-                        mminfo->ptMaxTrackSize.x = pThis->maxwidth(); //can't make window bigger than max width
+                        //can't make window bigger than max width
+                        mminfo->ptMaxTrackSize.x = pThis->_maxwidth;
                     }
-                    if (pThis->maxheight() != 0)
+                    if (pThis->_maxheight != 0)
                     {
-                        mminfo->ptMaxTrackSize.y = pThis->maxheight(); //can't make window bigger than max height
+                        //can't make window bigger than max height
+                        mminfo->ptMaxTrackSize.y = pThis->_maxheight;
                     }
                     handled = true;
                 }
                 break;
                 case WM_NCCREATE:
                 {
-                    pThis->hWnd = hWnd; //set the hWnd for retrieval by other functions without needing to pass
-                    if ((App::winversion >= OSVersion::WIN10_1607) && (pThis->_threaddpiawarenesscontext == DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE))
+                    //set the hWnd for retrieval by other functions without needing to pass
+                    pThis->_hWnd = hWnd;
+                    /*Enable per-monitor DPI scaling for caption, menu, and top-level scroll bars
+                    for top-level windows that are running as per-monitor DPI aware (This will have
+                    no effect if the thread's DPI context is not per-monitor-DPI-aware). This API
+                    should be called while processing WM_NCCREATE.*/
+                    if (App::winversion >= OSVersion::WIN10_1607)
                     {
-                        /*Enable per-monitor DPI scaling for caption, menu, and top-level scroll
-                        bars for top-level windows that are running as per-monitor DPI aware (This
-                        will have no effect if the thread's DPI context is not
-                        per-monitor-DPI-aware). This API should be called while processing
-                        WM_NCCREATE.*/
-                        HMODULE lib = GetModuleHandle(TEXT("user32.dll"));
-                        if (lib)
+                        if (App::processdpiawarenesscontext != nullptr)
                         {
-                            using PFN_ENABLE_NON_CLIENT_DPI_SCALING = BOOL(WINAPI *)(HWND);
-                            PFN_ENABLE_NON_CLIENT_DPI_SCALING pfnenablenonclientscaling = (PFN_ENABLE_NON_CLIENT_DPI_SCALING)GetProcAddress(lib, "EnableNonClientDpiScaling");
-                            if (pfnenablenonclientscaling)
+                            HMODULE lib = GetModuleHandle(TEXT("user32.dll"));
+                            if (lib)
                             {
-                                pfnenablenonclientscaling(hWnd);
+                                using PFN_ARE_DPI_AWARENESS_CONTEXTS_EQUAL =
+                                    BOOL(WINAPI*)(DPI_AWARENESS_CONTEXT, DPI_AWARENESS_CONTEXT);
+                                PFN_ARE_DPI_AWARENESS_CONTEXTS_EQUAL pfnaredpiawarenesscontextsequal =
+                                    (PFN_ARE_DPI_AWARENESS_CONTEXTS_EQUAL)GetProcAddress(lib, "AreDpiAwarenessContextsEqual");
+                                if (pfnaredpiawarenesscontextsequal)
+                                {
+                                    if (pfnaredpiawarenesscontextsequal(pThis->_threaddpiawarenesscontext,
+                                                                        DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE))
+                                    {
+                                        if (lib)
+                                        {
+                                            using PFN_ENABLE_NON_CLIENT_DPI_SCALING =
+                                                BOOL(WINAPI *)(HWND);
+                                            PFN_ENABLE_NON_CLIENT_DPI_SCALING pfnenablenonclientscaling =
+                                                (PFN_ENABLE_NON_CLIENT_DPI_SCALING)GetProcAddress(lib, "EnableNonClientDpiScaling");
+                                            if (pfnenablenonclientscaling)
+                                            {
+                                                pfnenablenonclientscaling(hWnd);
+                                            }
+                                        }
+                                    }
+                                }
+
                             }
                         }
                     }
@@ -108,38 +133,42 @@ LRESULT CALLBACK Window::_WndProc(_In_ HWND hWnd, _In_ UINT message, _In_ WPARAM
                 break;
                 case WM_CREATE:
                 {
-                    RECT rcWindow = {};
-                    //get the window rectangle
-                    GetWindowRect(hWnd, &rcWindow);
-
                     //if we are using CW_USEDEFAULT set the value to the rcWindow value
-                    if (pThis->left() == CW_USEDEFAULT)
+                    if ((pThis->_left == CW_USEDEFAULT) || (pThis->_top == CW_USEDEFAULT) ||
+                        (pThis->_width == CW_USEDEFAULT) || (pThis->_height == CW_USEDEFAULT))
                     {
-                        pThis->left(static_cast<int>(rcWindow.left));
-                    }
-                    if (pThis->top() == CW_USEDEFAULT)
-                    {
-                        pThis->top(static_cast<int>(rcWindow.top));
-                    }
-                    if (pThis->width() == CW_USEDEFAULT)
-                    {
-                        pThis->width(static_cast<int>(rcWindow.right - rcWindow.left));
-                    }
-                    if (pThis->height() == CW_USEDEFAULT)
-                    {
-                        pThis->height(static_cast<int>(rcWindow.bottom - rcWindow.top));
+                        //get the window rectangle
+                        RECT rcWindow = {};
+                        GetWindowRect(hWnd, &rcWindow);
+
+                        if (pThis->_left == CW_USEDEFAULT)
+                        {
+                            pThis->left(static_cast<int>(rcWindow.left));
+                        }
+                        if (pThis->_top == CW_USEDEFAULT)
+                        {
+                            pThis->top(static_cast<int>(rcWindow.top));
+                        }
+                        if (pThis->_width == CW_USEDEFAULT)
+                        {
+                            pThis->width(static_cast<int>(rcWindow.right - rcWindow.left));
+                        }
+                        if (pThis->_height == CW_USEDEFAULT)
+                        {
+                            pThis->height(static_cast<int>(rcWindow.bottom - rcWindow.top));
+                        }
                     }
 
                     //update our _prev variables to be the same as the initial size variables
-                    pThis->_prevleft = pThis->_left;
-                    pThis->_prevtop = pThis->_top;
-                    pThis->_prevwidth = pThis->_width;
+                    pThis->_prevleft   = pThis->_left;
+                    pThis->_prevtop    = pThis->_top;
+                    pThis->_prevwidth  = pThis->_width;
                     pThis->_prevheight = pThis->_height;
 
                     //calculate the size width and height should be based on scaling
                     pThis->getWindowDPI();
-                    pThis->_actualwidth = pThis->Scale(pThis->width());
-                    pThis->_actualheight = pThis->Scale(pThis->height());
+                    pThis->_actualwidth = pThis->Scale(pThis->_width);
+                    pThis->_actualheight = pThis->Scale(pThis->_height);
 
                     //setup D3D dependent resources
                     pThis->CreateSwapChain();
@@ -224,7 +253,7 @@ LRESULT CALLBACK Window::_WndProc(_In_ HWND hWnd, _In_ UINT message, _In_ WPARAM
                     pThis->_left = newpos->x;
                     pThis->_top = newpos->y;
                     bool minimized = newpos->x < 0 ? true : false; //less than zero means window is minimizing
-                                                                   //don't update if no change to width or height or if the window is minimizing
+                    //don't update if no change to width or height or if the window is minimizing
                     if ((pThis->_actualwidth != newpos->cx || pThis->_actualheight != newpos->cy) &&
                         !minimized)
                     {
@@ -270,10 +299,36 @@ LRESULT CALLBACK Window::_WndProc(_In_ HWND hWnd, _In_ UINT message, _In_ WPARAM
                 break;
                 case WM_DPICHANGED:
                 {
+                    bool changedpi = false;
+                    if (App::winversion >= OSVersion::WIN10_1607)
+                    {
+                        if (App::processdpiawarenesscontext != nullptr)
+                        {
+                            HMODULE lib = GetModuleHandle(TEXT("user32.dll"));
+                            if (lib)
+                            {
+                                using PFN_ARE_DPI_AWARENESS_CONTEXTS_EQUAL = BOOL(WINAPI*)(DPI_AWARENESS_CONTEXT, DPI_AWARENESS_CONTEXT);
+                                PFN_ARE_DPI_AWARENESS_CONTEXTS_EQUAL pfnaredpiawarenesscontextsequal = (PFN_ARE_DPI_AWARENESS_CONTEXTS_EQUAL)GetProcAddress(lib, "AreDpiAwarenessContextsEqual");
+                                if (pfnaredpiawarenesscontextsequal)
+                                {
+                                    if (pfnaredpiawarenesscontextsequal(*App::processdpiawarenesscontext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2))
+                                    {
+                                        changedpi = true;
+                                    }
+                                    else
+                                    {
+                                        if (pfnaredpiawarenesscontextsequal(*App::processdpiawarenesscontext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE))
+                                        {
+                                            changedpi = true;
+                                        }
+                                    }
+                                }
+
+                            }
+                        }
+                    }
                     //only per monitor aware need to respond to WM_DPICHANGED
-                    if (((App::processdpiawarenesscontext) && ((*App::processdpiawarenesscontext == DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) ||
-                        (*App::processdpiawarenesscontext == DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE))) ||
-                        ((App::processdpiawareness) && (*App::processdpiawareness == PROCESS_PER_MONITOR_DPI_AWARE)))
+                    if (changedpi || ((App::processdpiawareness) && (*App::processdpiawareness ==                                                                           PROCESS_PER_MONITOR_DPI_AWARE)))
                     {
                         // This message tells the program that most of its window is on a monitor with a new DPI. The wParam contains
                         // the new DPI, and the lParam contains a rect which defines the window rectangle scaled to the new DPI.
@@ -292,7 +347,7 @@ LRESULT CALLBACK Window::_WndProc(_In_ HWND hWnd, _In_ UINT message, _In_ WPARAM
                         pThis->_width = MulDiv(lprcNewScale->right - lprcNewScale->left, 100, pThis->scaleFactor); //width without scaling
                         pThis->_actualheight = lprcNewScale->bottom - lprcNewScale->top;
                         pThis->_height = MulDiv(lprcNewScale->bottom - lprcNewScale->top, 100, pThis->scaleFactor);//height without scaling
-                                                                                                                         // For the new DPI: resize the window
+                                                                                                                                                // For the new DPI: resize the window
                         SetWindowPos(hWnd, HWND_TOP, lprcNewScale->left, lprcNewScale->top, (lprcNewScale->right - lprcNewScale->left),
                             (lprcNewScale->bottom - lprcNewScale->top), SWP_NOZORDER | SWP_NOACTIVATE);
                         RedrawWindow(hWnd, NULL, NULL, RDW_ERASE | RDW_INVALIDATE);
@@ -388,8 +443,8 @@ LRESULT CALLBACK Window::_WndProc(_In_ HWND hWnd, _In_ UINT message, _In_ WPARAM
                     MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
                     reinterpret_cast<LPTSTR>(&lpMsgBuf),
                     0, NULL);
-                lpDisplayBuf = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, (lstrlen(reinterpret_cast<LPCTSTR>(lpMsgBuf))
-                    + lstrlen(reinterpret_cast<LPCTSTR>(lpszMessage)) + 118) * sizeof(TCHAR));
+                lpDisplayBuf = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, (static_cast<size_t>(lstrlen(reinterpret_cast<LPCTSTR>(lpMsgBuf)))
+                    + static_cast<size_t>(lstrlen(reinterpret_cast<LPCTSTR>(lpszMessage))) + 118) * sizeof(TCHAR));
                 if (lpDisplayBuf)
                 {
                     StringCchPrintf(reinterpret_cast<LPTSTR>(lpDisplayBuf),
@@ -426,8 +481,8 @@ LRESULT CALLBACK Window::_WndProc(_In_ HWND hWnd, _In_ UINT message, _In_ WPARAM
                     MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
                     reinterpret_cast<LPTSTR>(&lpMsgBuf),
                     0, NULL);
-                lpDisplayBuf = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, (lstrlen(reinterpret_cast<LPCTSTR>(lpMsgBuf))
-                    + lstrlen(reinterpret_cast<LPCTSTR>(lpszMessage)) + 118) * sizeof(TCHAR));
+                lpDisplayBuf = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, (static_cast<size_t>(lstrlen(reinterpret_cast<LPCTSTR>(lpMsgBuf)))
+                    + static_cast<size_t>(lstrlen(reinterpret_cast<LPCTSTR>(lpszMessage))) + 118) * sizeof(TCHAR));
                 if (lpDisplayBuf)
                 {
                     StringCchPrintf(reinterpret_cast<LPTSTR>(lpDisplayBuf),

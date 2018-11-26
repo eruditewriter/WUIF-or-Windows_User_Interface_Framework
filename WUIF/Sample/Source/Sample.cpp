@@ -1,4 +1,4 @@
-/*Copyright 2017 Jonathan Campbell
+/*Copyright (c) 2018 Jonathan Campbell
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -11,12 +11,13 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.*/
+
 #include "..\Headers\stdafx.h"
 #include "..\Headers\Sample.h"
 
-
-
+bool flip = true;
 using namespace WUIF;
+UINT D3D11Resources::d3d11createDeviceFlags = D3D11_CREATE_DEVICE_SINGLETHREADED;
 
 bool MenuCommand(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam, Window* pWin)
 {
@@ -28,23 +29,69 @@ bool MenuCommand(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam, Window* 
     bool handled = false;
     switch (LOWORD(wParam))
     {
-    case ID_FILE_EXIT:
-    {
+        case ID_FILE_EXIT:
+        {
 
-        PostQuitMessage(0);
-        handled = true;
-        break;
-    }
-    case ID_HELP_ABOUT:
-    {
-        handled = true;
-        break;
-    }
-    case ID_FILE_CHANGEICON:
-    {
-        pWin->icon(LoadIcon(NULL, IDI_ERROR));
-        pWin->iconsm(reinterpret_cast<HICON>(LoadImage(NULL, IDI_WARNING, IMAGE_ICON, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_SHARED)));
-    }
+            PostQuitMessage(0);
+            handled = true;
+            break;
+        }
+        case ID_HELP_ABOUT:
+        {
+            handled = true;
+            break;
+        }
+        case ID_FILE_CHANGEICON:
+        {
+            pWin->icon(LoadIcon(NULL, IDI_ERROR));
+            pWin->iconsm(reinterpret_cast<HICON>(LoadImage(NULL, IDI_WARNING, IMAGE_ICON, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_SHARED)));
+            handled = true;
+            break;
+        }
+        case ID_FILE_MAKECHILD:
+        {
+            if (pWin != App::mainWindow)
+            {
+                if (pWin->hWndParent() == NULL)
+                    pWin->hWndParent(App::mainWindow->hWnd());
+            }
+            else
+            {
+                std::vector<Window*> wins = App::GetWindows();
+                for (std::vector<Window*>::iterator i = wins.begin(); i != wins.end(); ++i)
+                {
+                    if (*i != App::mainWindow)
+                    {
+                        if (static_cast<Window*>(*i)->hWndParent() == App::mainWindow->hWnd())
+                        {
+                            static_cast<Window*>(*i)->hWndParent(NULL);
+                            static_cast<Window*>(*i)->menu(MAKEINTRESOURCE(IDR_MENU1));
+                        }
+                    }
+                }
+            }
+            handled = true;
+            break;
+        }
+        case ID_FILE_CHANGETITLE:
+        {
+            if (flip)
+            {
+                pWin->windowname(TEXT("NewTitle"));
+                flip = false;
+            }
+            else
+            {
+                pWin->windowname(TEXT("Other Window"));
+                flip = true;
+            }
+            break;
+        }
+        case ID_FILE_MOVEWINDOW:
+        {
+            pWin->left(500);
+            break;
+        }
     }
     return handled;
 }
@@ -119,7 +166,8 @@ int main(int argc, char *argv[])
         wndclass.hIcon = LoadIcon(NULL, IDI_WARNING);
         wndclass.hCursor = LoadCursor(NULL, IDC_UPARROW);
         wndclass.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-        wndclass.hIconSm = reinterpret_cast<HICON>(LoadImage(NULL, IDI_INFORMATION, IMAGE_ICON, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_SHARED));
+        wndclass.hIconSm = reinterpret_cast<HICON>(LoadImage(NULL, IDI_INFORMATION, IMAGE_ICON, GetSystemMetrics(SM_CXSMICON),
+                                                             GetSystemMetrics(SM_CYSMICON), LR_SHARED));
         ATOM sclassatom = RegisterClassEx(&wndclass);
 
 

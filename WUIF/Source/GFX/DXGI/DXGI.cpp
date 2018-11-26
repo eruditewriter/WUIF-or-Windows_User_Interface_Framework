@@ -12,11 +12,24 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.*/
 #include "stdafx.h"
-#include "GFX\GFX.h"
-#include "Application\Application.h"
-#include "Window\Window.h"
+#include "Utils/dllhelper.h"
+#include "GFX/GFX.h"
+#include "Application/Application.h"
+#include "Window/Window.h"
 
-
+#ifdef _DEBUG
+namespace
+{
+    class dxgilibAPI
+    {
+        WUIF::DllHelper _dxgi{ TEXT("dxgi.dll"), WUIF::OSVersion::WIN8_1 };
+        WUIF::DllHelper _dxgidebug{ TEXT("dxgidebug.dll"), WUIF::OSVersion::WIN7 };
+    public:
+        decltype(CreateDXGIFactory2)    *CreateDXGIFactory2    = _dxgi.assign("CreateDXGIFactory2", WUIF::OSVersion::WIN8_1);
+        decltype(DXGIGetDebugInterface) *DXGIGetDebugInterface = _dxgidebug.assign("DXGIGetDebugInterface", WUIF::OSVersion::WIN7);
+    };
+}
+#endif
 
 using namespace Microsoft::WRL;
 using namespace WUIF;
@@ -39,38 +52,30 @@ DXGIResources::DXGIResources(Window * const winptr) :
     //tearingsupport(false)
 {
     /**assign default values to DXGI_SWAP_CHAIN_DESC1**
-    *BufferCount = value that describes the number of buffers in the swap chain - use
-     double-buffering to minimize latency - 2 is required for flip effects.
-    *SampleDesc.Count - number of multi-samples per pixel - flip effects can't use multi-sampling
-     so set to 1
-    *AlphaMode = value that identifies the transparency behavior of the swap-chain back buffer -
-     DXGI_ALPHA_MODE_IGNORE indicates to ignore the transparency behavior and is mandatory for
-     CreateSwapChainForHwnd
-    *Format = structure that describes the display format - DXGI_FORMAT_B8G8R8A8_UNORM is the most
-     common swap chain format.
-    *BufferUsage = value that describes the surface usage and CPU access options for the back
-     buffer -  DXGI_USAGE_RENDER_TARGET_OUTPUT indicates to use the surface or resource as an
-     output render target
-    *SwapEffect = value that describes the presentation model - DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL
-     indicates to use a flip presentation model and it persists the contents of the back buffer
-     (cannot be used with multi-sampling)
-       NB: MS documentation states that DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL is not available on Win 7
-           but testing shows that it is available with Platform Update for Windows 7
+    *BufferCount = value that describes the number of buffers in the swap chain - use double-buffering to minimize latency -
+        2 is required for flip effects.
+    *SampleDesc.Count - number of multi-samples per pixel - flip effects can't use multi-sampling so set to 1
+    *AlphaMode = value that identifies the transparency behavior of the swap-chain back buffer - DXGI_ALPHA_MODE_IGNORE indicates to ignore
+        the transparency behavior and is mandatory for CreateSwapChainForHwnd
+    *Format = structure that describes the display format - DXGI_FORMAT_B8G8R8A8_UNORM is the most common swap chain format.
+    *BufferUsage = value that describes the surface usage and CPU access options for the back buffer -  DXGI_USAGE_RENDER_TARGET_OUTPUT
+        indicates to use the surface or resource as an output render target
+    *SwapEffect = value that describes the presentation model - DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL indicates to use a flip presentation model
+        and it persists the contents of the back buffer (cannot be used with multi-sampling). DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL or
+        DXGI_SWAP_EFFECT_FLIP_DISCARD must be used for Direct3D 12 as the others are not supported. NB: MS documentation states that
+        DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL is not available on Win 7 but testing shows that it is available with Platform Update for Windows 7
     *Flags = value specifies options for swap-chain behavior
-      *DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING - It is recommended to always use the tearing flag when
-       it is available - this will be disabled if not supported
-      *DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH - enable an application to switch modes by calling
-       IDXGISwapChain::ResizeTarget. When switching from windowed to full-screen mode, the display
-       mode or monitor resolution will be changed to match the dimensions of the application window
+      *DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING - It is recommended to always use the tearing flag when it is available - this will be disabled
+        if not supported
+      *DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH - enable an application to switch modes by calling IDXGISwapChain::ResizeTarget. When
+        switching from windowed to full-screen mode, the display mode or monitor resolution will be changed to match the dimensions of the
+        application window
     **these values are already 0 on initialization and do not need to be set - noted for reference
       *Width = resolution width - 0 indicates match the size of the window
       *Height = resolution height - 0 indicates match the size of the window
-      *SampleDesc.Quality = image quality level - default sampler mode, with no anti-aliasing, has
-       a count of 1 and a quality level of 0
-      *Stereo = specifies whether the full-screen display mode or the swap-chain back buffer is
-       stereo (actual value is FALSE)
-      *Scaling = DXGI_SCALING-typed value that identifies resize behavior - win7 only supports
-       DXGI_SCALING_STRETCH (0) */
+      *SampleDesc.Quality = image quality level - default sampler mode, with no anti-aliasing, has a count of 1 and a quality level of 0
+      *Stereo = specifies whether the full-screen display mode or the swap-chain back buffer is stereo (actual value is FALSE)
+      *Scaling = DXGI_SCALING-typed value that identifies resize behavior - win7 only supports DXGI_SCALING_STRETCH (0) */
     dxgiSwapChainDesc1.BufferCount      = 2;
     dxgiSwapChainDesc1.SampleDesc.Count = 1;
     dxgiSwapChainDesc1.AlphaMode        = DXGI_ALPHA_MODE_IGNORE;
@@ -86,6 +91,7 @@ DXGIResources::~DXGIResources()
     dxgiSwapChain1.Reset();
 }
 
+
 void DXGIResources::GetDXGIAdapterandFactory()
 {
     DebugPrint(TEXT("Entering GetDXGIAdapterandFactory"));
@@ -94,73 +100,45 @@ void DXGIResources::GetDXGIAdapterandFactory()
     {
         DebugPrint(TEXT("Getting new DXGI Factory"));
         #ifdef _DEBUG
-        /*In Windows 8, any DXGI factory created while DXGIDebug.dll was present on the system
-        would load and use it. Starting in Windows 8.1, apps explicitly request that DXGIDebug.dll
-        be loaded instead. Use CreateDXGIFactory2 and specify the DXGI_CREATE_FACTORY_DEBUG flag to
-        request DXGIDebug.dll; the DLL will be loaded if it is present on the system.*/
-        if (App::winversion >= OSVersion::WIN8_1)
+        //load the DXGI debug layer
+        if (App::GFXflags & FLAGS::D3D12)
         {
-            if (App::GFXflags & FLAGS::D3D12) //already tested for Win10 in WUIF.cpp/InitResources
+            /*The D3D12 debug layer (requires the Graphics Tools "optional feature") is not enabled through a creation flag like it is
+            in Direct3D 11.  NOTE: Enabling the debug layer after device creation will invalidate the active device.*/
+            ComPtr<ID3D12Debug> debugController;   //Direct3D 12 debug controller
+            if (SUCCEEDED(d3d12libAPI->D3D12GetDebugInterface(IID_PPV_ARGS(debugController.ReleaseAndGetAddressOf()))))
             {
-                /*The D3D12 debug device is not enabled through a creation flag like it is in
-                Direct3D 11. The debug device is only present if the Graphics Tools Windows 10
-                optional feature is enabled.*/
-                /*function signature PFN_D3D12_GET_DEBUG_INTERFACE is provided as a typedef by
-                d3d12.h for D3D12GetDebugInterface*/
-                PFN_D3D12_GET_DEBUG_INTERFACE pfnd3d12getdebuginterface =
-                    reinterpret_cast<PFN_D3D12_GET_DEBUG_INTERFACE>(
-                        GetProcAddress(App::libD3D12, "D3D12GetDebugInterface"));
-                if (pfnd3d12getdebuginterface)
-                {
-                    Microsoft::WRL::ComPtr<ID3D12Debug> debugController;   //Direct3D 12 debug controller
-                    ThrowIfFailed(pfnd3d12getdebuginterface(IID_PPV_ARGS(debugController.ReleaseAndGetAddressOf())));
-                    debugController->EnableDebugLayer();
-                    debugController.Reset();
-                }
+                debugController->EnableDebugLayer();
+                debugController.Reset();
+                DebugPrint(TEXT("D3D12 Debug Layer is enabled"));
             }
-            //CreateDXGIFactory2 is available on Win > 8.1 and is only needed to load the debug dll
-            using PFN_CREATE_DXGI_FACTORY_2 = HRESULT(WINAPI *)(UINT, REFIID, _Out_ void**);
-            //GetModuleHandle could return NULL - dxgi.dll should be loaded and covered by _ASSERTE
-            #ifdef _MSC_VER
-            #pragma warning(suppress: 6387)
-            #endif
-            PFN_CREATE_DXGI_FACTORY_2 pfncreatefactory2 = reinterpret_cast<PFN_CREATE_DXGI_FACTORY_2>(GetProcAddress(GetModuleHandle(TEXT("dxgi.dll")), "CreateDXGIFactory2"));
-            //assert if GetProcAddress fails by returning NULL
-            ThrowIfFalse(pfncreatefactory2);
-            ThrowIfFailed(pfncreatefactory2(DXGI_CREATE_FACTORY_DEBUG,
-                IID_PPV_ARGS(dxgiFactory.ReleaseAndGetAddressOf())));
         }
-        else
+        /*get the DXGI Debug and InfoQueue resources (MS says only available Win 8 or greater but have loaded on Win7 with Platform update
+        and latest SDK)*/
+        dxgilibAPI _dxgilibAPI;
+        _dxgilibAPI.DXGIGetDebugInterface(IID_PPV_ARGS(dxgiDebug.ReleaseAndGetAddressOf())); //get IDXGIDEBUG interface
+        if (SUCCEEDED(_dxgilibAPI.DXGIGetDebugInterface(IID_PPV_ARGS(dxgiInfoQueue.ReleaseAndGetAddressOf())))) //get IDXGIInfoQueue interface
         {
-        #endif //_DEBUG
-            //Only need CreateDXGIFactory2 for debug so we can use CreateDXGIFactory1
+            /*In Windows 8, any DXGI factory created while DXGIDebug.dll was present on the system would load and use it. Starting
+            in Windows 8.1, apps explicitly request that DXGIDebug.dll be loaded instead. Use CreateDXGIFactory2 and specify the
+            DXGI_CREATE_FACTORY_DEBUG flag to request DXGIDebug.dll; the DLL will be loaded if it is present on the system.*/
+            if (App::winversion >= OSVersion::WIN8_1)
+            {
+                ThrowIfFailed(_dxgilibAPI.CreateDXGIFactory2(DXGI_CREATE_FACTORY_DEBUG, IID_PPV_ARGS(dxgiFactory.ReleaseAndGetAddressOf())));
+            }
+            else
             {
                 ThrowIfFailed(CreateDXGIFactory1(IID_PPV_ARGS(dxgiFactory.ReleaseAndGetAddressOf())));
             }
-        #ifdef _DEBUG
+            DebugPrint(TEXT("DXGI Factory Created"));
+            dxgiInfoQueue->SetBreakOnSeverity(DXGI_DEBUG_ALL, DXGI_INFO_QUEUE_MESSAGE_SEVERITY_ERROR, true);
+            dxgiInfoQueue->SetBreakOnSeverity(DXGI_DEBUG_ALL, DXGI_INFO_QUEUE_MESSAGE_SEVERITY_CORRUPTION, true);
+            DebugPrint(TEXT("DXGI Debug Available"));
         }
-        /*get the DXGI Debug and InfoQueue resources (MS says only available Win 8 or greater but
-        have loaded on Win7 with Platform update and latest SDK)*/
-        HINSTANCE lib = LoadLibrary(TEXT("dxgidebug.dll"));
-        if (lib)
-        {
-            using PFN_DXGI_GET_DEBUG_INTERFACE = HRESULT(WINAPI *)(REFIID, void**);
-            PFN_DXGI_GET_DEBUG_INTERFACE pfndxgigetdebuginterface =
-                reinterpret_cast<PFN_DXGI_GET_DEBUG_INTERFACE>(GetProcAddress(lib, "DXGIGetDebugInterface"));
-            if (pfndxgigetdebuginterface)
-            {
-                pfndxgigetdebuginterface(IID_PPV_ARGS(dxgiDebug.ReleaseAndGetAddressOf()));
-                if (SUCCEEDED(pfndxgigetdebuginterface(
-                    IID_PPV_ARGS(dxgiInfoQueue.ReleaseAndGetAddressOf()))))
-                {
-                    dxgiInfoQueue->SetBreakOnSeverity(DXGI_DEBUG_ALL, DXGI_INFO_QUEUE_MESSAGE_SEVERITY_ERROR, true);
-                    dxgiInfoQueue->SetBreakOnSeverity(DXGI_DEBUG_ALL, DXGI_INFO_QUEUE_MESSAGE_SEVERITY_CORRUPTION, true);
-                }
-            }
-            FreeLibrary(lib);
-            lib = NULL;
-        }
-        #endif // _DEBUG
+        #else
+        //Only need CreateDXGIFactory2 for dxgi debug so we can use CreateDXGIFactory1 in all other cases
+        ThrowIfFailed(CreateDXGIFactory1(IID_PPV_ARGS(dxgiFactory.ReleaseAndGetAddressOf())));
+        #endif
     }
     //factory exists - if we have an adapter release and re-enumerate
     DebugPrint(TEXT("Getting DXGI Adapter"));
@@ -169,47 +147,27 @@ void DXGIResources::GetDXGIAdapterandFactory()
     DXGI_ADAPTER_DESC1 desc = {};
     if (App::GFXflags & FLAGS::D3D12)
     {
-        /*enumerate the hardware adapters until we find the first one that supports the minimum D3D
-        feature level*/
+        /*enumerate the hardware adapters until we find the first one that supports the minimum D3D feature level*/
         for (unsigned int adapterIndex = 0;
-            DXGI_ERROR_NOT_FOUND !=
-            dxgiFactory->EnumAdapters1(adapterIndex, adapter.ReleaseAndGetAddressOf());
-            ++adapterIndex)
+             DXGI_ERROR_NOT_FOUND != dxgiFactory->EnumAdapters1(adapterIndex, adapter.ReleaseAndGetAddressOf());
+             ++adapterIndex)
         {
-            if (FAILED(adapter->GetDesc1(&desc)))
+            if ((FAILED(adapter->GetDesc1(&desc))) || (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE))
             {
-                //invalid adapter, continue along
-                continue;
-            }
-            if (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE)
-            {
-                // Don't select the Basic Render Driver adapter for now
+                //invalid adapter or Basic Render Driver, continue along
                 continue;
             }
             //check to see if the adapter supports D3D12 but don't create the actual device yet
-            /*Function signature PFN_D3D12_CREATE_DEVICE is provided as a typedef by d3d12.h for
-            D3D12CreateDevice*/
-            PFN_D3D12_CREATE_DEVICE pfnd3d12createdevice =
-                reinterpret_cast<PFN_D3D12_CREATE_DEVICE>(GetProcAddress(App::libD3D12,
-                    "D3D12CreateDevice"));
-            if (pfnd3d12createdevice)
+            if (SUCCEEDED(d3d12libAPI->D3D12CreateDevice(adapter.Get(), App::minD3DFL, _uuidof(ID3D12Device), nullptr)))
             {
-                if (SUCCEEDED(pfnd3d12createdevice(adapter.Get(), App::minD3DFL, _uuidof(ID3D12Device),
-                    nullptr)))
-                {
-                    //adapter is good, now assign adapter to dxgiAdapter using Swap
-                    DebugPrint(TEXT("Found D3D12 Adapter"));
-                    adapter.Swap(dxgiAdapter);
-                    return;
-                }
-            }
-            else
-            {
-                //couldn't load PFN_D3D12_CREATE_DEVICE see if we can fallback to D3D11
-                goto nod3d12adapter;
+                //adapter is good, now assign adapter to dxgiAdapter using Swap
+                DebugPrint(TEXT("Found D3D12 Adapter: %s"), desc.Description);
+                adapter.Swap(dxgiAdapter);
+                return;
             }
         }
-        //we didn't find a D3D12 hardware adapter, try, if allowed, to fallback to a warp device
+        /*We didn't find a D3D12 hardware adapter. D3D12 WARP devices are only available with Graphics Tools installed. Try warp otherwise
+        try to fallback to D3D11*/
         if (FLAGS::WARP & App::GFXflags)
         {
             ComPtr<IDXGIFactory4> dxgiFactory4;
@@ -218,44 +176,46 @@ void DXGIResources::GetDXGIAdapterandFactory()
                 if (SUCCEEDED(dxgiFactory4->EnumWarpAdapter(IID_PPV_ARGS(&adapter))))
                 {
                     //adapter is good, now assign adapter to dxgiAdapter using Swap
+                    #ifdef _DEBUG
+                    adapter->GetDesc1(&desc);
                     DebugPrint(TEXT("Found D3D12 WARP Adapter: %s"), desc.Description);
+                    #endif
                     adapter.Swap(dxgiAdapter);
                     dxgiFactory4.Reset();
                     return;
                 }
+                DebugPrint(TEXT("Failed to get a WARP adapter for D3D12. Checking for D3D11 availability."));
                 dxgiFactory4.Reset();
             }
         }
-        //no capable WARP adapter or PFN_D3D12_CREATE_DEVICE not found
-        nod3d12adapter:
-            if (App::GFXflags & FLAGS::D3D11)
+        //D3D12CreateDevice failed or no capable WARP adapter
+        if (App::GFXflags & FLAGS::D3D11)
+        {
+            //no suitable D3D12 adapter but D3D11 allowed - so remove the GFXFlag for D3D12
+            DebugPrint(TEXT("No D3D12 Adapter, fallingback to D3D11"));
+            const WUIF::FLAGS::GFX_Flags flagtempval = (App::GFXflags & (~FLAGS::D3D12));
+            changeconst(&const_cast<WUIF::FLAGS::GFX_Flags&>(App::GFXflags), &flagtempval);
+            if (WUIF::d3d12libAPI)
             {
-                //no suitable D3D12 adapter but D3D11 allowed - so remove the GFXFlag for D3D12
-                DebugPrint(TEXT("No D3D12 Adapter, fallback to D3D11"));
-                const WUIF::FLAGS::GFX_Flags flagtempval = (App::GFXflags & (~FLAGS::D3D12));
-                changeconst(&const_cast<WUIF::FLAGS::GFX_Flags&>(App::GFXflags),
-                    &flagtempval);
-                if (WUIF::App::libD3D12)
-                {
-                    FreeLibrary(WUIF::App::libD3D12);
-                    WUIF::App::libD3D12 = NULL;
-                }
+                //no more need for d3d12libAPI so delete
+                delete WUIF::d3d12libAPI;
+                WUIF::d3d12libAPI = nullptr;
             }
-            else
-            {
-                //if D3D12 only throw an error
-                SetLastError(WE_GRAPHICS_INVALID_DISPLAY_ADAPTER);
-                throw WUIF_exception(TEXT("This application requires Direct3D 12 and there is not an available adapter!"));
-            }
+        }
+        else
+        {
+            //if D3D12 only throw an error
+            SetLastError(WE_GRAPHICS_INVALID_DISPLAY_ADAPTER);
+            throw WUIF_exception(TEXT("This application requires Direct3D 12 and there is not an available adapter!"));
+        }
     }
-    //no D3D12 adapter or D3D11 only, we've checked and faulted if D3D12 only, so try D3D11
+    //no D3D12 adapter or D3D11 only
     bool renderdriver = false;
     int  renderindex = 0;
     D3D_FEATURE_LEVEL returnedFeatureLevel;
-    /*This array defines the set of DirectX hardware feature levels this app will support. if you
-    include D3D_FEATURE_LEVEL_12_0 and/or D3D_FEATURE_LEVEL_12_1 in your array when run on versions
-    of Windows prior to Windows 10 then you get a return code of E_INVALIDARG. On <Win10 we
-    pass &featureLevels[2]*/
+    /*This array defines the set of DirectX hardware feature levels this app will support. if you include D3D_FEATURE_LEVEL_12_0 and/or
+    D3D_FEATURE_LEVEL_12_1 in your array when run on versions of Windows prior to Windows 10 then you get a return code of E_INVALIDARG.
+    On <Win10 we pass &featureLevels[2]*/
     D3D_FEATURE_LEVEL featureLevels[] =
     {
         D3D_FEATURE_LEVEL_12_1,
@@ -268,9 +228,9 @@ void DXGIResources::GetDXGIAdapterandFactory()
         D3D_FEATURE_LEVEL_9_2,
         D3D_FEATURE_LEVEL_9_1
     };
-    for (unsigned int adapterIndex = 0; DXGI_ERROR_NOT_FOUND !=
-        dxgiFactory->EnumAdapters1(adapterIndex, adapter.ReleaseAndGetAddressOf());
-        ++adapterIndex)
+    for (unsigned int adapterIndex = 0;
+         DXGI_ERROR_NOT_FOUND != dxgiFactory->EnumAdapters1(adapterIndex, adapter.ReleaseAndGetAddressOf());
+         ++adapterIndex)
     {
         if (FAILED(adapter->GetDesc1(&desc)))
         {
@@ -295,47 +255,48 @@ void DXGIResources::GetDXGIAdapterandFactory()
             }
         }
         HRESULT hr = NULL;
-        /*Set ppDevice and ppImmediateContext to NULL to determine which feature level is supported
-        by looking at pFeatureLevel. If the Direct3D 11.1 runtime is present on the computer and
-        pFeatureLevels is set to NULL, this function won't create a D3D_FEATURE_LEVEL_11_1 device.
-        To create a D3D_FEATURE_LEVEL_11_1 device, you must explicitly provide a D3D_FEATURE_LEVEL
-        array that includes D3D_FEATURE_LEVEL_11_1. If you provide a D3D_FEATURE_LEVEL array that
-        contains D3D_FEATURE_LEVEL_11_1 on a computer that doesn't have the Direct3D 11.1 runtime
-        installed, this function immediately fails with E_INVALIDARG*/
+        /*Set ppDevice and ppImmediateContext to NULL to determine which feature level is supported by looking at pFeatureLevel. If the
+        Direct3D 11.1 runtime is present on the computer and pFeatureLevels is set to NULL, this function won't create a
+        D3D_FEATURE_LEVEL_11_1 device. To create a D3D_FEATURE_LEVEL_11_1 device, you must explicitly provide a D3D_FEATURE_LEVEL array
+        that includes D3D_FEATURE_LEVEL_11_1. If you provide a D3D_FEATURE_LEVEL array that contains D3D_FEATURE_LEVEL_11_1 on a computer
+        that doesn't have the Direct3D 11.1 runtime installed, this function immediately fails with E_INVALIDARG*/
         if (App::winversion >= OSVersion::WIN10)
         {
             hr = (D3D11CreateDevice(
-                adapter.Get(),
-                D3D_DRIVER_TYPE_UNKNOWN, //must use D3D_DRIVER_TYPE_UNKNOWN if pAdapter is not null
-                NULL,
-                D3D11_CREATE_DEVICE_SINGLETHREADED,
-                featureLevels,
-                _countof(featureLevels),
-                D3D11_SDK_VERSION,
-                nullptr,
-                &returnedFeatureLevel,
-                nullptr));
+                    adapter.Get(),
+                    D3D_DRIVER_TYPE_UNKNOWN, //must use D3D_DRIVER_TYPE_UNKNOWN if pAdapter is not null
+                    NULL,
+                    0,
+                    featureLevels,
+                    _countof(featureLevels),
+                    D3D11_SDK_VERSION,
+                    nullptr,
+                    &returnedFeatureLevel,
+                    nullptr));
         }
         else
         {
             hr = (D3D11CreateDevice(
-                adapter.Get(),
-                D3D_DRIVER_TYPE_UNKNOWN, //must use D3D_DRIVER_TYPE_UNKNOWN if pAdapter is not null
-                NULL,
-                D3D11_CREATE_DEVICE_SINGLETHREADED,
-                &featureLevels[2],
-                _countof(featureLevels) - 2,
-                D3D11_SDK_VERSION,
-                nullptr,
-                &returnedFeatureLevel,
-                nullptr));
+                    adapter.Get(),
+                    D3D_DRIVER_TYPE_UNKNOWN,
+                    NULL,
+                    0,
+                    &featureLevels[2], //remove D3D_FEATURE_LEVEL_12_* not available on Win7 or Win8
+                    _countof(featureLevels) - 2,
+                    D3D11_SDK_VERSION,
+                    nullptr,
+                    &returnedFeatureLevel,
+                    nullptr));
         }
         if (SUCCEEDED(hr))
         {
             if (returnedFeatureLevel >= App::minD3DFL)
             {
+                #ifdef _DEBUG
+                adapter->GetDesc1(&desc);
                 //adapter is good, now assign adapter to dxgiAdapter using Swap
                 DebugPrint(TEXT("Found D3D11 Adapter: %s"), desc.Description);
+                #endif // _DEBUG
                 adapter.Swap(dxgiAdapter);
                 return;
             }
@@ -344,23 +305,25 @@ void DXGIResources::GetDXGIAdapterandFactory()
         { //for 11.0 only systems we will get an E_INVALIDARG return
             if ((hr == E_INVALIDARG) && (App::minD3DFL == D3D_FEATURE_LEVEL_11_0))
             {
-                hr = D3D11CreateDevice(
-                    adapter.Get(),
-                    D3D_DRIVER_TYPE_UNKNOWN, //must use D3D_DRIVER_TYPE_UNKNOWN if we pAdapter is not null
-                    NULL,
-                    D3D11_CREATE_DEVICE_SINGLETHREADED,
-                    &featureLevels[3],
-                    _countof(featureLevels) - 3,
-                    D3D11_SDK_VERSION,
-                    nullptr,
-                    &returnedFeatureLevel,
-                    nullptr);
-                if (SUCCEEDED(hr))
+                if (SUCCEEDED(D3D11CreateDevice(
+                        adapter.Get(),
+                        D3D_DRIVER_TYPE_UNKNOWN,
+                        NULL,
+                        0,
+                        &featureLevels[3], //remove D3D_FEATURE_LEVEL_1_1
+                        _countof(featureLevels) - 3,
+                        D3D11_SDK_VERSION,
+                        nullptr,
+                        &returnedFeatureLevel,
+                        nullptr)))
                 {
                     if (returnedFeatureLevel == App::minD3DFL)
                     {
+                        #ifdef _DEBUG
+                        adapter->GetDesc1(&desc);
                         //adapter is good, now assign adapter to dxgiAdapter using Swap
                         DebugPrint(TEXT("Found D3D11 Adapter: %s"), desc.Description);
+                        #endif // _DEBUG
                         adapter.Swap(dxgiAdapter);
                         return;
                     }
@@ -368,71 +331,169 @@ void DXGIResources::GetDXGIAdapterandFactory()
             }
         }
     }
-    //no suitable hardware adapters found, check if we found a Basic Render Driver and use that
-    if ((renderdriver) && (App::GFXflags & FLAGS::WARP))
+    //no suitable hardware adapters found. Try to get a WARP device if allowed
+    if (App::GFXflags & FLAGS::WARP)
     {
-        dxgiFactory->EnumAdapters1(renderindex, adapter.ReleaseAndGetAddressOf());
-        HRESULT hr = D3D11CreateDevice(
-            adapter.Get(),
-            D3D_DRIVER_TYPE_UNKNOWN,
-            NULL,
-            D3D11_CREATE_DEVICE_SINGLETHREADED,
-            featureLevels,
-            _countof(featureLevels),
-            D3D11_SDK_VERSION,
-            nullptr,
-            &returnedFeatureLevel,
-            nullptr);
-        if (SUCCEEDED(hr))
+        //If we found a Basic Render Driver use that
+        if (renderdriver)
         {
-            if (returnedFeatureLevel >= App::minD3DFL)
+            dxgiFactory->EnumAdapters1(renderindex, adapter.ReleaseAndGetAddressOf());
+            HRESULT hr = D3D11CreateDevice(
+                adapter.Get(),
+                D3D_DRIVER_TYPE_UNKNOWN,
+                NULL,
+                0,
+                &featureLevels[2],
+                _countof(featureLevels) - 2,
+                D3D11_SDK_VERSION,
+                nullptr,
+                &returnedFeatureLevel,
+                nullptr);
+            if (SUCCEEDED(hr))
             {
-                //adapter is good, now assign adapter to dxgiAdapter using Swap
-                DebugPrint(TEXT("Found D3D11 WARP Adapter: %s"), desc.Description);
-                adapter.Swap(dxgiAdapter);
-                return;
+                if (returnedFeatureLevel >= App::minD3DFL)
+                {
+                    #ifdef _DEBUG
+                    adapter->GetDesc1(&desc);
+                    //adapter is good, now assign adapter to dxgiAdapter using Swap
+                    DebugPrint(TEXT("Found D3D11 Adapter: %s"), desc.Description);
+                    #endif // _DEBUG
+                    adapter.Swap(dxgiAdapter);
+                    return;
+                }
+            }
+            else
+            {
+                if ((hr == E_INVALIDARG) && (App::minD3DFL == D3D_FEATURE_LEVEL_11_0))
+                {
+                    if (SUCCEEDED(D3D11CreateDevice(
+                            adapter.Get(),
+                            D3D_DRIVER_TYPE_UNKNOWN, //must use D3D_DRIVER_TYPE_UNKNOWN if pAdapter is not null
+                            NULL,
+                            0,
+                            &featureLevels[1],
+                            _countof(featureLevels) - 1,
+                            D3D11_SDK_VERSION,
+                            nullptr,
+                            &returnedFeatureLevel,
+                            nullptr)))
+                    {
+                        if (returnedFeatureLevel == App::minD3DFL)
+                        {
+                            #ifdef _DEBUG
+                            adapter->GetDesc1(&desc);
+                            //adapter is good, now assign adapter to dxgiAdapter using Swap
+                            DebugPrint(TEXT("Found D3D11 Adapter: %s"), desc.Description);
+                            #endif // _DEBUG
+                            adapter.Swap(dxgiAdapter);
+                            return;
+                        }
+                    }
+                }
+                else
+                {
+                    adapter.Reset();
+                    SetLastError(WE_GRAPHICS_INVALID_DISPLAY_ADAPTER);
+                    throw WUIF_exception(TEXT("Unable to find a suitable graphics adapter to run application"));
+                }
             }
         }
         else
         {
-            if ((hr == E_INVALIDARG) && (App::minD3DFL == D3D_FEATURE_LEVEL_11_0))
+            //Must be using a software renderer - need to enumerate adapter a different way
+            ComPtr<ID3D11Device> device;
+            ComPtr<IDXGIDevice>  dxgiDevice0;
+            HRESULT hr = D3D11CreateDevice(
+                nullptr,
+                D3D_DRIVER_TYPE_WARP,
+                NULL,
+                0,
+                &featureLevels[2], //remove D3D_FEATURE_LEVEL_12_* not available on Win7 or Win8
+                _countof(featureLevels) - 2,
+                D3D11_SDK_VERSION,
+                device.GetAddressOf(),
+                &returnedFeatureLevel,
+                nullptr);
+            if (SUCCEEDED(hr))
             {
-                hr = D3D11CreateDevice(
-                    adapter.Get(),
-                    D3D_DRIVER_TYPE_UNKNOWN, //must use D3D_DRIVER_TYPE_UNKNOWN if pAdapter is not null
-                    NULL,
-                    D3D11_CREATE_DEVICE_SINGLETHREADED,
-                    &featureLevels[1],
-                    _countof(featureLevels) - 1,
-                    D3D11_SDK_VERSION,
-                    nullptr,
-                    &returnedFeatureLevel,
-                    nullptr);
-                if (SUCCEEDED(hr))
+                if (returnedFeatureLevel >= App::minD3DFL)
                 {
-                    if (returnedFeatureLevel == App::minD3DFL)
+                    if (SUCCEEDED(device.As(&dxgiDevice0)))
                     {
-                        //adapter is good, now assign adapter to dxgiAdapter using Swap
-                        DebugPrint(TEXT("Found D3D11 WARP Adapter: %s"), desc.Description);
-                        adapter.Swap(dxgiAdapter);
-                        return;
+                        ComPtr<IDXGIAdapter> softadapter;
+                        if (SUCCEEDED(dxgiDevice0->GetAdapter(&softadapter)))
+                        {
+                            if (SUCCEEDED(softadapter->GetParent(IID_PPV_ARGS(dxgiFactory.ReleaseAndGetAddressOf()))))
+                            {
+                            #ifdef _DEBUG
+                                DXGI_ADAPTER_DESC desc0 = {};
+                                softadapter->GetDesc(&desc0);
+                                //adapter is good, now assign adapter to dxgiAdapter using Swap
+                                DebugPrint(TEXT("Found D3D11 WARP Adapter: %s"), desc0.Description);
+                            #endif
+                                ComPtr<IDXGIAdapter1> softadapter1;
+                                softadapter.As(&softadapter1);
+                                softadapter.Reset();
+                                softadapter1.Swap(dxgiAdapter);
+                                return;
+                            }
+                        }
+                        softadapter.Reset();
                     }
                 }
             }
             else
             {
-                adapter.Reset();
-                SetLastError(WE_GRAPHICS_INVALID_DISPLAY_ADAPTER);
-                throw WUIF_exception(TEXT("Unable to find a suitable graphics adapter to run application"));
+                if ((hr == E_INVALIDARG) && (App::minD3DFL == D3D_FEATURE_LEVEL_11_0))
+                {
+                    hr = D3D11CreateDevice(
+                        nullptr,
+                        D3D_DRIVER_TYPE_WARP, //must use D3D_DRIVER_TYPE_UNKNOWN if pAdapter is not null
+                        NULL,
+                        0,
+                        &featureLevels[1],
+                        _countof(featureLevels) - 1,
+                        D3D11_SDK_VERSION,
+                        device.GetAddressOf(),
+                        &returnedFeatureLevel,
+                        nullptr);
+                    if (SUCCEEDED(hr))
+                    {
+                        if (returnedFeatureLevel == App::minD3DFL)
+                        {
+                            if (SUCCEEDED(device.As(&dxgiDevice0)))
+                            {
+                                ComPtr<IDXGIAdapter> softadapter;
+                                if (SUCCEEDED(dxgiDevice0->GetAdapter(&softadapter)))
+                                {
+                                    if (SUCCEEDED(softadapter->GetParent(IID_PPV_ARGS(dxgiFactory.ReleaseAndGetAddressOf()))))
+                                    {
+                                        #ifdef _DEBUG
+                                        DXGI_ADAPTER_DESC desc0 = {};
+                                        softadapter->GetDesc(&desc0);
+                                        //adapter is good, now assign adapter to dxgiAdapter using Swap
+                                        DebugPrint(TEXT("Found D3D11 WARP Adapter: %s"), desc0.Description);
+                                        #endif
+                                        ComPtr<IDXGIAdapter1> softadapter1;
+                                        softadapter.As(&softadapter1);
+                                        softadapter.Reset();
+                                        softadapter1.Swap(dxgiAdapter);
+                                        return;
+                                    }
+                                }
+                                softadapter.Reset();
+                            }
+                        }
+                    }
+                }
             }
+            device.Reset();
+            dxgiDevice0.Reset();
         }
     }
-    else
-    {
-        adapter.Reset();
-        SetLastError(WE_GRAPHICS_INVALID_DISPLAY_ADAPTER);
-        throw WUIF_exception(TEXT("Unable to find a suitable graphics adapter to run application!"));
-    }
+    adapter.Reset();
+    SetLastError(WE_GRAPHICS_INVALID_DISPLAY_ADAPTER);
+    throw WUIF_exception(TEXT("Unable to find a suitable graphics adapter to run application!"));
 }
 
 void DXGIResources::CreateSwapChain()
@@ -630,7 +691,7 @@ void DXGIResources::CreateSwapChain()
         HRESULT hr = dxgiFactory->CreateSwapChainForHwnd(
             win->d3d11Device1.Get(), //D3D11 - this is a pointer to the Direct3D device for the swap chain
                                                 //D3D12 - this is a pointer to a direct command queue
-            win->hWnd,             //The HWND handle that is associated with the swap chain
+            win->hWnd(),             //The HWND handle that is associated with the swap chain
             &dxgiSwapChainDesc1,                //A pointer to a DXGI_SWAP_CHAIN_DESC1 structure for the swap-chain description
             &fs,	//recommendation is to create a Windowed swap chain and then allow a change to full-screen
                     //Set it to NULL to create a windowed swap chain.
@@ -656,7 +717,7 @@ void DXGIResources::CreateSwapChain()
     with the DXGI_MWA_NO_WINDOW_CHANGES flag after swap chain creation.*/
     //if (!DXres->winparent->property.allowfsexclusive())
     {
-        ThrowIfFailed(dxgiFactory->MakeWindowAssociation(win->hWnd, DXGI_MWA_NO_ALT_ENTER));
+        ThrowIfFailed(dxgiFactory->MakeWindowAssociation(win->hWnd(), DXGI_MWA_NO_ALT_ENTER));
     }
     if ((App::winversion >= OSVersion::WIN10) && (win->enableHDR))
     {
