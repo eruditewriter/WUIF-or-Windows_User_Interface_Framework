@@ -5,3 +5,8 @@
 /.vs
 /WUIF/Sample/Win32
 /WUIF/Sample/x64/Debug
+/Win32
+/WUIF/Sample/x64/Release
+/WUIF/Win32
+/WUIF/x64/Debug
+/x64
