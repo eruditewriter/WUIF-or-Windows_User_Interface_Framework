@@ -185,14 +185,14 @@ public:
     checked_bit_field  operator^ (const fieldbit_t& rhs) const volatile noexcept { return checked_bit_field(word ^ rhs.word); }
 
     //shift operators for all integer types
-    checked_bit_field  operator<< (const unsigned int s) const noexcept { assert(s <= 8 * sizeof(word_t)); return checked_bit_field(word << s); }
-    checked_bit_field  operator<< (const unsigned int s) const volatile noexcept { assert(s <= 8 * sizeof(word_t)); return checked_bit_field(word << s); }
-    checked_bit_field  operator>> (const unsigned int s) const noexcept { assert(s <= 8 * sizeof(word_t)); return checked_bit_field(word >> s); }
-    checked_bit_field  operator>> (const unsigned int s) const volatile noexcept { assert(s <= 8 * sizeof(word_t)); return checked_bit_field(word >> s); }
-    checked_bit_field& operator<<=(const unsigned int s) noexcept { assert(s <= 8 * sizeof(word_t)); word <<= s; return *this; }
-    checked_bit_field& operator>>=(const unsigned int s) noexcept { assert(s <= 8 * sizeof(word_t)); word >>= s; return *this; }
-    volatile checked_bit_field& operator<<=(const unsigned int s) volatile noexcept { assert(s <= 8 * sizeof(word_t)); word <<= s; return *this; }
-    volatile checked_bit_field& operator>>=(const unsigned int s) volatile noexcept { assert(s <= 8 * sizeof(word_t)); word >>= s; return *this; }
+    checked_bit_field  operator<< (const unsigned int s) const noexcept { assert(s <= static_cast<unsigned int>(8) * static_cast<unsigned int>(sizeof(word_t))); return checked_bit_field(word << s); }
+    checked_bit_field  operator<< (const unsigned int s) const volatile noexcept { assert(s <= static_cast<unsigned int>(8) * static_cast<unsigned int>(sizeof(word_t))); return checked_bit_field(word << s); }
+    checked_bit_field  operator>> (const unsigned int s) const noexcept { assert(s <= static_cast<unsigned int>(8) * static_cast<unsigned int>(sizeof(word_t))); return checked_bit_field(word >> s); }
+    checked_bit_field  operator>> (const unsigned int s) const volatile noexcept { assert(s <= static_cast<unsigned int>(8) * static_cast<unsigned int>(sizeof(word_t))); return checked_bit_field(word >> s); }
+    checked_bit_field& operator<<=(const unsigned int s) noexcept { assert(s <= static_cast<unsigned int>(8) * static_cast<unsigned int>(sizeof(word_t))); word <<= s; return *this; }
+    checked_bit_field& operator>>=(const unsigned int s) noexcept { assert(s <= static_cast<unsigned int>(8) * static_cast<unsigned int>(sizeof(word_t))); word >>= s; return *this; }
+    volatile checked_bit_field& operator<<=(const unsigned int s) volatile noexcept { assert(s <= static_cast<unsigned int>(8) * static_cast<unsigned int>(sizeof(word_t))); word <<= s; return *this; }
+    volatile checked_bit_field& operator>>=(const unsigned int s) volatile noexcept { assert(s <= static_cast<unsigned int>(8) * static_cast<unsigned int>(sizeof(word_t))); word >>= s; return *this; }
 
     //logical operators
     const bool operator!() const noexcept { return (word == 0 ? true : false); }

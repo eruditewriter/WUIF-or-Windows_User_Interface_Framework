@@ -38,7 +38,7 @@ namespace WUIF {
         std::condition_variable vecready;
         std::vector<Window*> Windows; //internal Window collection vector - not exposed publicly
 
-        /*Function to return a copy of the Window collection vector*/
+        /*Function to return a read-only "copy" of the Window collection vector*/
         inline const std::vector<Window*>& GetWindows()
         {
             return Windows;

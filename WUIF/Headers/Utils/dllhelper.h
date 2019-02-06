@@ -64,7 +64,15 @@ namespace WUIF
                 LPCTSTR pszFormat = TEXT("%s %s");
                 TCHAR* pszTxt = TEXT("Failed to find procedure");
                 TCHAR pszDest[MAXCHAR];
-                StringCchPrintf(pszDest, MAXCHAR, pszFormat, pszTxt, proc_name);
+                #ifdef _UNICODE
+                int wchars_num = MultiByteToWideChar(CP_ACP, MB_PRECOMPOSED, proc_name, -1, NULL, 0);
+                wchar_t* proc_nameW = new wchar_t[wchars_num];
+                MultiByteToWideChar(CP_ACP, MB_PRECOMPOSED, proc_name, -1, proc_nameW, wchars_num);
+                StringCchPrintf(pszDest, MAXCHAR, pszFormat, pszTxt, proc_nameW);
+                delete[] proc_nameW;
+                #else
+                StringCchPrintf(pszDest, STRSAFE_MAX_CCH, pszFormat, pszTxt, proc_name);
+                #endif
                 throw WUIF::WUIF_exception(pszDest);
             }
             return ProcPtr(_procptr);
@@ -102,7 +110,15 @@ namespace WUIF
                 LPCTSTR pszFormat = TEXT("%s %s");
                 TCHAR* pszTxt = TEXT("Failed to find procedure");
                 TCHAR pszDest[MAXCHAR];
-                StringCchPrintf(pszDest, MAXCHAR, pszFormat, pszTxt, proc_name);
+                #ifdef _UNICODE
+                int wchars_num = MultiByteToWideChar(CP_ACP, MB_PRECOMPOSED, proc_name, -1, NULL, 0);
+                wchar_t* proc_nameW = new wchar_t[wchars_num];
+                MultiByteToWideChar(CP_ACP, MB_PRECOMPOSED, proc_name, -1, proc_nameW, wchars_num);
+                StringCchPrintf(pszDest, MAXCHAR, pszFormat, pszTxt, proc_nameW);
+                delete[] proc_nameW;
+                #else
+                StringCchPrintf(pszDest, STRSAFE_MAX_CCH, pszFormat, pszTxt, proc_name);
+                #endif
                 throw WUIF::WUIF_exception(pszDest);
             }
             return ProcPtr(_procptr);
